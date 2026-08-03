@@ -149,35 +149,46 @@ elif authentication_status:
                             st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công!")
                             st.rerun()
 
-            # --- CHỈNH SỬA ---
+          # --- CHỈNH SỬA ---
             with st.expander("✏️ Chỉnh sửa thông tin tài khoản"):
+                import time # Thêm thư viện để tạo khoảng chờ thông báo
+                
                 edit_user = st.selectbox("Chọn tài khoản cần sửa:", list(credentials['usernames'].keys()), key="edit_select")
                 if edit_user:
                     edit_info = credentials['usernames'][edit_user]
                     with st.form("edit_user_form"):
-                        e_name = st.text_input("Tên hiển thị:", value=edit_info.get('name', ''))
+                        e_name = st.text_input("Tên hiển thị*:", value=edit_info.get('name', ''))
                         col1, col2 = st.columns(2)
                         with col1:
                             e_pos = st.text_input("Chức vụ:", value=edit_info.get('position', ''))
                         with col2:
                             e_dept = st.text_input("Phòng ban:", value=edit_info.get('department', ''))
                             
-                        e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi mật khẩu):", type="password")
+                        e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi):", type="password")
                         
                         if st.form_submit_button("Cập nhật tài khoản"):
-                            credentials['usernames'][edit_user]['name'] = e_name
-                            credentials['usernames'][edit_user]['position'] = e_pos
-                            credentials['usernames'][edit_user]['department'] = e_dept
-                            
-                            if e_pass != "":
-                                t_cred = {'usernames': {edit_user: {'password': e_pass}}}
-                                stauth.Hasher.hash_passwords(t_cred)
-                                credentials['usernames'][edit_user]['password'] = t_cred['usernames'][edit_user]['password']
-                            
-                            save_users(credentials)
-                            st.success(f"✅ Đã cập nhật thành công tài khoản {edit_user}!")
-                            st.rerun()
-
+                            # 1. KIỂM TRA LỖI (BÁO THẤT BẠI)
+                            if e_name.strip() == "":
+                                st.error("❌ Cập nhật thất bại: 'Tên hiển thị' không được để trống!")
+                            elif e_pass != "" and len(e_pass) < 5:
+                                st.error("❌ Cập nhật thất bại: Mật khẩu mới phải có ít nhất 5 ký tự!")
+                            else:
+                                # 2. TIẾN HÀNH CẬP NHẬT (NẾU KHÔNG CÓ LỖI)
+                                credentials['usernames'][edit_user]['name'] = e_name.strip()
+                                credentials['usernames'][edit_user]['position'] = e_pos.strip()
+                                credentials['usernames'][edit_user]['department'] = e_dept.strip()
+                                
+                                if e_pass != "":
+                                    t_cred = {'usernames': {edit_user: {'password': e_pass}}}
+                                    stauth.Hasher.hash_passwords(t_cred)
+                                    credentials['usernames'][edit_user]['password'] = t_cred['usernames'][edit_user]['password']
+                                
+                                save_users(credentials)
+                                st.success(f"✅ Đã cập nhật thành công tài khoản '{edit_user}'!")
+                                
+                                # Dừng 1.5 giây để người dùng kịp đọc thông báo trước khi hệ thống tải lại trang
+                                time.sleep(1.5) 
+                                st.rerun()
             # --- XÓA ---
             with st.expander("❌ Xóa tài khoản"):
                 del_list = [u for u in credentials['usernames'].keys() if u != 'admin']
