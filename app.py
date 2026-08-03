@@ -6,8 +6,8 @@ from langchain_openai import ChatOpenAI
 
 # -------------------------------------------------------------------
 # Tự động mã hóa mật khẩu bằng Hasher chuẩn của thư viện để tránh lỗi
-hashed_passwords = stauth.Hasher(['admin123', 'user123']).generate()
-
+# CODE MỚI:
+hashed_passwords = stauth.Hasher.hash_list(['admin123', 'user123'])
 credentials = {
     'usernames': {
         'admin': {
