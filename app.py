@@ -222,12 +222,19 @@ elif authentication_status:
         # TAB 3: QUẢN LÝ LINE
         with tab3:
             st.subheader("🏭 Danh sách LINE hiện có")
+            
+            # --- Tự động tạo danh sách Người phụ trách từ Hệ thống Tài khoản ---
+            manager_options = ["Chưa phân công"]
+            for u_name, u_info in credentials['usernames'].items():
+                manager_options.append(f"{u_name} ({u_info.get('name', '')})")
+            
             line_list = []
             for lname, linfo in credentials.get('lines', {}).items():
                 line_list.append({
                     "Số LINE": linfo.get('number', 'Chưa cập nhật'), 
                     "Tên LINE": lname,
                     "Khu vực": linfo.get('area', 'Chưa cập nhật'),
+                    "Người phụ trách": linfo.get('manager', 'Chưa phân công'), # <--- THÊM CỘT NGƯỜI PHỤ TRÁCH
                     "Mô tả": linfo.get('description', ''),
                     "Trạng thái": linfo.get('status', 'Không phê duyệt')
                 })
@@ -246,8 +253,8 @@ elif authentication_status:
                         new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung...")
                         new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A...") 
                     with col2:
+                        new_lmanager = st.selectbox("Người phụ trách:", manager_options) # <--- CHỌN TỪ TÀI KHOẢN
                         new_ldescription = st.text_input("Mô tả / Ghi chú:")
-                        # Đã sửa thành Đã phê duyệt / Không phê duyệt
                         new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Không phê duyệt"])
                     
                     if st.form_submit_button("Tạo LINE"):
@@ -259,6 +266,7 @@ elif authentication_status:
                             credentials['lines'][new_lname] = {
                                 'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật",
                                 'area': new_larea.strip() if new_larea.strip() != "" else "Chưa cập nhật",
+                                'manager': new_lmanager, # <--- LƯU LẠI
                                 'description': new_ldescription.strip(),
                                 'status': new_lstatus
                             }
@@ -277,15 +285,25 @@ elif authentication_status:
                     if edit_lname:
                         line_info = credentials['lines'][edit_lname]
                         with st.form("edit_line_form"):
-                            el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) 
-                            el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
-                            el_desc = st.text_input("Mô tả:", value=line_info.get('description', ''))
-                            # Admin có thể chọn "Không phê duyệt" ở đây để khóa chức năng của LINE này
-                            el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Không phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) 
+                                el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
+                                
+                                # Xử lý người phụ trách (nếu tài khoản phụ trách cũ bị xóa, vẫn hiển thị)
+                                curr_manager = line_info.get('manager', 'Chưa phân công')
+                                if curr_manager not in manager_options:
+                                    manager_options.append(curr_manager)
+                                el_manager = st.selectbox("Người phụ trách:", manager_options, index=manager_options.index(curr_manager))
+                            
+                            with col2:
+                                el_desc = st.text_input("Mô tả:", value=line_info.get('description', ''))
+                                el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Không phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
                             
                             if st.form_submit_button("Cập nhật LINE"):
                                 credentials['lines'][edit_lname]['number'] = el_number.strip() 
                                 credentials['lines'][edit_lname]['area'] = el_area.strip()
+                                credentials['lines'][edit_lname]['manager'] = el_manager # <--- CẬP NHẬT
                                 credentials['lines'][edit_lname]['description'] = el_desc.strip()
                                 credentials['lines'][edit_lname]['status'] = el_status
                                 save_users(credentials)
