@@ -136,7 +136,7 @@ elif authentication_status:
                         new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng...") 
                     with col2:
                         new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Tài chính...")
-                        new_line = st.selectbox("LINE:", line_options) # Chỉ hiển thị Line đã duyệt
+                        new_line = st.selectbox("LINE:", line_options)
                         new_pass = st.text_input("Mật khẩu*:", type="password")
                     
                     if st.form_submit_button("Tạo tài khoản"):
@@ -178,7 +178,7 @@ elif authentication_status:
                         with col3:
                             curr_line = edit_info.get('line', 'Chưa cập nhật')
                             if curr_line not in line_options:
-                                line_options.append(curr_line) # Giữ lại hiển thị nếu nhân viên đang thuộc Line chưa duyệt
+                                line_options.append(curr_line)
                             e_line = st.selectbox("LINE:", line_options, index=line_options.index(curr_line))
                             
                         e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi):", type="password")
@@ -223,7 +223,6 @@ elif authentication_status:
         with tab3:
             st.subheader("🏭 Danh sách LINE hiện có")
             
-            # --- Tự động tạo danh sách Người phụ trách từ Hệ thống Tài khoản ---
             manager_options = ["Chưa phân công"]
             for u_name, u_info in credentials['usernames'].items():
                 manager_options.append(f"{u_name} ({u_info.get('name', '')})")
@@ -234,8 +233,8 @@ elif authentication_status:
                     "Số LINE": linfo.get('number', 'Chưa cập nhật'), 
                     "Tên LINE": lname,
                     "Khu vực": linfo.get('area', 'Chưa cập nhật'),
-                    "Người phụ trách": linfo.get('manager', 'Chưa phân công'), # <--- THÊM CỘT NGƯỜI PHỤ TRÁCH
-                    "Mô tả": linfo.get('description', ''),
+                    "Người phụ trách": linfo.get('manager', 'Chưa phân công'),
+                    "Số lượng Máy": len(linfo.get('machines', {})), # Đếm số lượng máy
                     "Trạng thái": linfo.get('status', 'Không phê duyệt')
                 })
             
@@ -243,6 +242,77 @@ elif authentication_status:
                 st.table(pd.DataFrame(line_list))
             else:
                 st.info("Hệ thống chưa có LINE nào. Hãy tạo mới bên dưới.")
+
+            # --- THIẾT LẬP MÁY MÓC BÊN TRONG LINE ---
+            with st.expander("⚙️ Thiết lập Máy móc (Bên trong LINE)"):
+                lines_keys = list(credentials.get('lines', {}).keys())
+                if not lines_keys:
+                    st.info("Chưa có LINE nào. Vui lòng tạo LINE trước.")
+                else:
+                    selected_line_for_mac = st.selectbox("1. Chọn LINE để mở thiết lập:", lines_keys, key="mac_line_select")
+                    
+                    if selected_line_for_mac:
+                        st.markdown(f"**Danh sách Máy thuộc {selected_line_for_mac}:**")
+                        line_machines = credentials['lines'][selected_line_for_mac].get('machines', {})
+                        
+                        mac_list = []
+                        for m_num, m_info in line_machines.items():
+                            mac_list.append({
+                                "Số máy": m_num,
+                                "Tên máy": m_info.get('name', ''),
+                                "Định dạng file": m_info.get('format', ''),
+                                "Đường dẫn": m_info.get('path', ''),
+                                "Kích hoạt (Lấy dữ liệu)": "✅ Có" if m_info.get('active') else "❌ Chưa lấy"
+                            })
+                        
+                        if mac_list:
+                            st.table(pd.DataFrame(mac_list))
+                        else:
+                            st.warning("LINE này hiện chưa có thiết lập máy nào.")
+
+                        st.markdown("**2. Thêm mới / Cập nhật Máy:**")
+                        with st.form("machine_setup_form", clear_on_submit=True):
+                            col_m1, col_m2 = st.columns(2)
+                            with col_m1:
+                                mac_num = st.text_input("Số máy* (Mã định danh):", placeholder="VD: M01")
+                                mac_name = st.text_input("Tên máy*:", placeholder="VD: Máy Cắt CNC")
+                            with col_m2:
+                                mac_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "TXT", "JSON", "Khác"])
+                                mac_path = st.text_input("Đường dẫn / Link Folder:", placeholder="VD: C:/Data/May01")
+                            
+                            mac_active = st.checkbox("Kích hoạt (Tích chọn để hệ thống bắt đầu lấy dữ liệu từ máy này)", value=True)
+                            
+                            if st.form_submit_button("Lưu cấu hình Máy"):
+                                if mac_num.strip() == "" or mac_name.strip() == "":
+                                    st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
+                                else:
+                                    if 'machines' not in credentials['lines'][selected_line_for_mac]:
+                                        credentials['lines'][selected_line_for_mac]['machines'] = {}
+                                    
+                                    credentials['lines'][selected_line_for_mac]['machines'][mac_num.strip()] = {
+                                        'name': mac_name.strip(),
+                                        'format': mac_format,
+                                        'path': mac_path.strip(),
+                                        'active': mac_active
+                                    }
+                                    save_users(credentials)
+                                    st.success(f"✅ Đã lưu cấu hình máy '{mac_num.strip()}' vào '{selected_line_for_mac}'!")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                        
+                        if line_machines:
+                            st.markdown("**3. Xóa máy khỏi LINE:**")
+                            col_del1, col_del2 = st.columns([3, 1])
+                            with col_del1:
+                                del_mac_num = st.selectbox("Chọn máy cần xóa:", list(line_machines.keys()))
+                            with col_del2:
+                                st.write("") # Căn chỉnh nút cho đều với ô nhập
+                                if st.button("Xác nhận Xóa"):
+                                    del credentials['lines'][selected_line_for_mac]['machines'][del_mac_num]
+                                    save_users(credentials)
+                                    st.success(f"✅ Đã xóa máy '{del_mac_num}' khỏi LINE {selected_line_for_mac}!")
+                                    time.sleep(1.5)
+                                    st.rerun()
 
             # --- TẠO LINE MỚI ---
             with st.expander("➕ Tạo LINE mới"):
@@ -253,7 +323,7 @@ elif authentication_status:
                         new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung...")
                         new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A...") 
                     with col2:
-                        new_lmanager = st.selectbox("Người phụ trách:", manager_options) # <--- CHỌN TỪ TÀI KHOẢN
+                        new_lmanager = st.selectbox("Người phụ trách:", manager_options) 
                         new_ldescription = st.text_input("Mô tả / Ghi chú:")
                         new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Không phê duyệt"])
                     
@@ -266,9 +336,10 @@ elif authentication_status:
                             credentials['lines'][new_lname] = {
                                 'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật",
                                 'area': new_larea.strip() if new_larea.strip() != "" else "Chưa cập nhật",
-                                'manager': new_lmanager, # <--- LƯU LẠI
+                                'manager': new_lmanager, 
                                 'description': new_ldescription.strip(),
-                                'status': new_lstatus
+                                'status': new_lstatus,
+                                'machines': {} # Khởi tạo danh sách máy trống
                             }
                             save_users(credentials)
                             st.success(f"✅ Đã tạo LINE '{new_lname}' thành công!")
@@ -290,7 +361,6 @@ elif authentication_status:
                                 el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) 
                                 el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
                                 
-                                # Xử lý người phụ trách (nếu tài khoản phụ trách cũ bị xóa, vẫn hiển thị)
                                 curr_manager = line_info.get('manager', 'Chưa phân công')
                                 if curr_manager not in manager_options:
                                     manager_options.append(curr_manager)
@@ -303,7 +373,7 @@ elif authentication_status:
                             if st.form_submit_button("Cập nhật LINE"):
                                 credentials['lines'][edit_lname]['number'] = el_number.strip() 
                                 credentials['lines'][edit_lname]['area'] = el_area.strip()
-                                credentials['lines'][edit_lname]['manager'] = el_manager # <--- CẬP NHẬT
+                                credentials['lines'][edit_lname]['manager'] = el_manager 
                                 credentials['lines'][edit_lname]['description'] = el_desc.strip()
                                 credentials['lines'][edit_lname]['status'] = el_status
                                 save_users(credentials)
@@ -349,15 +419,12 @@ elif authentication_status:
 
     # ================= KHU VỰC HỎI ĐÁP AI (CHUNG) =================
     
-    # BƯỚC KIỂM TRA BẮT BUỘC: Nhân viên thuộc LINE "Không phê duyệt" sẽ bị cấm dùng AI
     is_line_approved = True
     if user_role != 'admin' and current_line not in ["Chưa cập nhật", "Tất cả"]:
         line_data = credentials.get('lines', {}).get(current_line, {})
-        # Nếu Line tồn tại nhưng trạng thái không phải là Đã phê duyệt
         if line_data and line_data.get('status') != 'Đã phê duyệt':
             is_line_approved = False
 
-    # Xử lý khóa chức năng nếu chưa phê duyệt
     if not is_line_approved:
         st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt' (hoặc đã bị bỏ phê duyệt). Hệ thống tạm thời khóa chức năng truy xuất dữ liệu đối với LINE này!")
     elif df is not None:
