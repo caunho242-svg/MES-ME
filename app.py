@@ -8,26 +8,29 @@ import os
 # -------------------------------------------------------------------
 # 1. CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP (USER & PASSWORD)
 # -------------------------------------------------------------------
-# Tự động mã hóa mật khẩu bằng Hasher chuẩn của thư viện để tránh lỗi
-hashed_passwords = stauth.Hasher.hash_passwords(['admin123', 'user123'])
+# 1. Khai báo tài khoản với mật khẩu GỐC
 credentials = {
     'usernames': {
         'admin': {
             'name': 'Quản trị viên',
-            'password': hashed_passwords[0] # Tương ứng mật khẩu: admin123
+            'password': 'admin123' 
         },
         'nhanvien1': {
             'name': 'Thành viên A',
-            'password': hashed_passwords[1] # Tương ứng mật khẩu: user123
+            'password': 'user123' 
         }
     }
 }
+
+# 2. Truyền toàn bộ biến credentials vào để thư viện tự động mã hóa
+stauth.Hasher.hash_passwords(credentials)
 
 authenticator = stauth.Authenticate(
     credentials,
     'excel_ai_cookie',
     'auth_key_123456',
     cookie_expiry_days=1
+)
 )
 
 # -------------------------------------------------------------------
