@@ -31,7 +31,6 @@ authenticator = stauth.Authenticate(
     'auth_key_123456',
     cookie_expiry_days=1
 )
-)
 
 # -------------------------------------------------------------------
 # 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
