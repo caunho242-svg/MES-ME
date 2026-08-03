@@ -22,7 +22,8 @@ def load_users():
                     'name': 'Quản trị viên',
                     'password': 'admin123',
                     'role': 'admin',
-                    'position': 'Quản lý Hệ thống' # Đã thêm mục chức vụ mặc định
+                    'position': 'Quản lý',
+                    'department': 'Hệ thống'
                 }
             }
         }
@@ -65,11 +66,12 @@ elif authentication_status:
     # -------------------------------------------------------------------
     authenticator.logout('Đăng xuất', 'sidebar')
     
-    # Lấy chức vụ của người đang đăng nhập để hiển thị lời chào
     current_user_info = credentials['usernames'].get(username, {})
     current_position = current_user_info.get('position', 'Nhân viên')
+    current_department = current_user_info.get('department', 'Chưa rõ')
     
-    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position})!")
+    # Tiêu đề hiển thị: Tên (Chức vụ - Phòng ban)
+    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position} - {current_department})!")
     st.markdown("---")
 
     with st.sidebar:
@@ -86,6 +88,7 @@ elif authentication_status:
         
         tab1, tab2 = st.tabs(["📂 Cập nhật Dữ liệu", "👥 Quản lý Tài khoản"])
         
+        # TAB 1: TẢI FILE
         with tab1:
             uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
             if uploaded_file is not None:
@@ -98,45 +101,96 @@ elif authentication_status:
             elif os.path.exists("data_server.csv"):
                 df = pd.read_csv("data_server.csv")
 
+        # TAB 2: QUẢN LÝ TÀI KHOẢN (Bảng điều khiển siêu cấp)
         with tab2:
-            st.subheader("➕ Cấp tài khoản mới cho nhân viên")
-            with st.form("new_user_form", clear_on_submit=True):
-                new_user = st.text_input("Tên đăng nhập (Username):", placeholder="VD: nhanvien2")
-                new_name = st.text_input("Tên hiển thị:", placeholder="VD: Trần Văn B")
-                # ---> THÊM Ô NHẬP CHỨC VỤ Ở ĐÂY <---
-                new_position = st.text_input("Chức vụ / Phòng ban:", placeholder="VD: Kế toán, Kho, Tổ trưởng Line 1...") 
-                new_pass = st.text_input("Mật khẩu:", type="password")
-                
-                submitted = st.form_submit_button("Tạo tài khoản")
-                if submitted:
-                    if new_user == "" or new_pass == "":
-                        st.error("⚠️ Vui lòng nhập đầy đủ Username và Mật khẩu!")
-                    elif new_user in credentials['usernames']:
-                        st.error("⚠️ Tên đăng nhập này đã tồn tại!")
-                    else:
-                        temp_cred = {'usernames': {new_user: {'password': new_pass}}}
-                        stauth.Hasher.hash_passwords(temp_cred)
-                        hashed_pass = temp_cred['usernames'][new_user]['password']
-                        
-                        credentials['usernames'][new_user] = {
-                            'name': new_name,
-                            'password': hashed_pass,
-                            'role': 'user',
-                            'position': new_position if new_position != "" else "Chưa cập nhật" # Lưu chức vụ
-                        }
-                        save_users(credentials) 
-                        st.success(f"✅ Đã tạo tài khoản '{new_user}' (Chức vụ: {new_position}) thành công!")
-            
-            st.subheader("📋 Danh sách tài khoản hiện có:")
+            st.subheader("📋 Danh sách tài khoản hiện có")
             user_list = []
             for uname, info in credentials['usernames'].items():
                 user_list.append({
                     "Username": uname, 
                     "Tên hiển thị": info.get('name', ''), 
-                    "Chức vụ": info.get('position', 'Chưa cập nhật'), # Hiển thị chức vụ lên bảng
+                    "Chức vụ": info.get('position', 'Chưa cập nhật'),
+                    "Phòng ban": info.get('department', 'Chưa cập nhật'),
                     "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên tra cứu"
                 })
             st.table(pd.DataFrame(user_list))
+
+            # --- TẠO MỚI ---
+            with st.expander("➕ Cấp tài khoản mới"):
+                with st.form("new_user_form", clear_on_submit=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        new_user = st.text_input("Tên đăng nhập (Username)*:", placeholder="VD: nhanvien2")
+                        new_name = st.text_input("Tên hiển thị*:", placeholder="VD: Trần Văn B")
+                    with col2:
+                        new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng, Kế toán viên...") 
+                        new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Line 1, Tài chính...")
+                    
+                    new_pass = st.text_input("Mật khẩu*:", type="password")
+                    
+                    if st.form_submit_button("Tạo tài khoản"):
+                        if new_user == "" or new_pass == "" or new_name == "":
+                            st.error("⚠️ Vui lòng nhập đầy đủ các trường bắt buộc (*)")
+                        elif new_user in credentials['usernames']:
+                            st.error("⚠️ Tên đăng nhập này đã tồn tại!")
+                        else:
+                            temp_cred = {'usernames': {new_user: {'password': new_pass}}}
+                            stauth.Hasher.hash_passwords(temp_cred)
+                            hashed_pass = temp_cred['usernames'][new_user]['password']
+                            
+                            credentials['usernames'][new_user] = {
+                                'name': new_name,
+                                'password': hashed_pass,
+                                'role': 'user',
+                                'position': new_position if new_position != "" else "Chưa cập nhật",
+                                'department': new_dept if new_dept != "" else "Chưa cập nhật"
+                            }
+                            save_users(credentials) 
+                            st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công!")
+                            st.rerun()
+
+            # --- CHỈNH SỬA ---
+            with st.expander("✏️ Chỉnh sửa thông tin tài khoản"):
+                edit_user = st.selectbox("Chọn tài khoản cần sửa:", list(credentials['usernames'].keys()), key="edit_select")
+                if edit_user:
+                    edit_info = credentials['usernames'][edit_user]
+                    with st.form("edit_user_form"):
+                        e_name = st.text_input("Tên hiển thị:", value=edit_info.get('name', ''))
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            e_pos = st.text_input("Chức vụ:", value=edit_info.get('position', ''))
+                        with col2:
+                            e_dept = st.text_input("Phòng ban:", value=edit_info.get('department', ''))
+                            
+                        e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi mật khẩu):", type="password")
+                        
+                        if st.form_submit_button("Cập nhật tài khoản"):
+                            credentials['usernames'][edit_user]['name'] = e_name
+                            credentials['usernames'][edit_user]['position'] = e_pos
+                            credentials['usernames'][edit_user]['department'] = e_dept
+                            
+                            if e_pass != "":
+                                t_cred = {'usernames': {edit_user: {'password': e_pass}}}
+                                stauth.Hasher.hash_passwords(t_cred)
+                                credentials['usernames'][edit_user]['password'] = t_cred['usernames'][edit_user]['password']
+                            
+                            save_users(credentials)
+                            st.success(f"✅ Đã cập nhật thành công tài khoản {edit_user}!")
+                            st.rerun()
+
+            # --- XÓA ---
+            with st.expander("❌ Xóa tài khoản"):
+                del_list = [u for u in credentials['usernames'].keys() if u != 'admin']
+                if not del_list:
+                    st.info("Không có tài khoản con nào để xóa.")
+                else:
+                    del_user = st.selectbox("Chọn tài khoản cần xóa:", del_list, key="del_select")
+                    st.warning(f"⚠️ Bạn có chắc chắn muốn xóa vĩnh viễn tài khoản '{del_user}' không?")
+                    if st.button("Xác nhận Xóa"):
+                        del credentials['usernames'][del_user]
+                        save_users(credentials)
+                        st.success(f"✅ Đã xóa tài khoản {del_user}!")
+                        st.rerun()
 
     # ================= KHU VỰC DÀNH CHO NHÂN VIÊN CON =================
     else:
