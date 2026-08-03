@@ -4,26 +4,46 @@ import streamlit_authenticator as stauth
 from langchain_experimental.agents import create_pandas_dataframe_agent
 from langchain_openai import ChatOpenAI
 import os
+import json
 
 # -------------------------------------------------------------------
-# 1. CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP (USER & PASSWORD)
+# 1. HỆ THỐNG QUẢN LÝ DỮ LIỆU TÀI KHOẢN (JSON)
 # -------------------------------------------------------------------
-# 1. Khai báo tài khoản với mật khẩu GỐC
-credentials = {
-    'usernames': {
-        'admin': {
-            'name': 'Quản trị viên',
-            'password': 'admin123' 
-        },
-        'nhanvien1': {
-            'name': 'Thành viên A',
-            'password': 'user123' 
+USER_FILE = "users.json"
+
+def load_users():
+    if os.path.exists(USER_FILE):
+        # Nếu đã có file, tải danh sách tài khoản (đã được mã hóa mật khẩu)
+        with open(USER_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        # Nếu chưa có, tạo tài khoản Admin mặc định
+        default_creds = {
+            'usernames': {
+                'admin': {
+                    'name': 'Quản trị viên',
+                    'password': 'admin123',
+                    'role': 'admin' # Quyền cao nhất
+                }
+            }
         }
-    }
-}
+        # Mã hóa mật khẩu lần đầu và lưu file
+        stauth.Hasher.hash_passwords(default_creds)
+        with open(USER_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_creds, f, ensure_ascii=False, indent=4)
+        return default_creds
 
-# 2. Truyền toàn bộ biến credentials vào để thư viện tự động mã hóa
-stauth.Hasher.hash_passwords(credentials)
+def save_users(creds):
+    with open(USER_FILE, "w", encoding="utf-8") as f:
+        json.dump(creds, f, ensure_ascii=False, indent=4)
+
+# -------------------------------------------------------------------
+# 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
+# -------------------------------------------------------------------
+st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
+
+# Tải credentials từ file JSON
+credentials = load_users()
 
 authenticator = stauth.Authenticate(
     credentials,
@@ -32,12 +52,6 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=1
 )
 
-# -------------------------------------------------------------------
-# 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
-# -------------------------------------------------------------------
-st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
-
-# Gọi hàm login chuẩn tương thích phiên bản mới
 authenticator.login(location='main')
 
 authentication_status = st.session_state.get('authentication_status')
@@ -50,50 +64,88 @@ elif authentication_status == None:
     st.warning('Vui lòng nhập Nickname và Mật khẩu để tiếp tục.')
 elif authentication_status:
     # -------------------------------------------------------------------
-    # 3. GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP THÀNH CÔNG
+    # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
     # -------------------------------------------------------------------
     authenticator.logout('Đăng xuất', 'sidebar')
     st.title(f"🤖 Trợ lý AI Truy xuất Dữ liệu - Xin chào {name}!")
     st.markdown("---")
 
-    # 1. CẤU HÌNH API KEY (Chung)
     with st.sidebar:
         st.header("⚙️ Cấu hình API")
         openai_api_key = st.text_input("Nhập OpenAI API Key:", type="password")
         st.info("Lưu ý: API Key không được lưu lại để đảm bảo bảo mật.")
 
-    # 2. PHÂN QUYỀN HIỂN THỊ VÀ XỬ LÝ DỮ LIỆU THEO TÀI KHOẢN
-    df = None # Biến chứa dữ liệu chung
+    df = None 
+    # Xác định quyền của người dùng hiện tại
+    user_role = credentials['usernames'][username].get('role', 'user')
 
-    if username == 'admin':
-        st.success("👑 Quyền Quản trị viên: Bạn được phép tải dữ liệu mới lên hệ thống.")
-        uploaded_file = st.file_uploader("📂 Chọn file dữ liệu mới (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
+    # ================= KHU VỰC DÀNH RIÊNG CHO ADMIN =================
+    if user_role == 'admin':
+        st.success("👑 Quyền Quản trị viên")
         
-        if uploaded_file is not None:
-            # Đọc file upload
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file)
+        # Chia giao diện làm 2 Tab
+        tab1, tab2 = st.tabs(["📂 Cập nhật Dữ liệu", "👥 Quản lý Tài khoản (Cấp quyền)"])
+        
+        with tab1:
+            uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
+            if uploaded_file is not None:
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    df = pd.read_excel(uploaded_file)
+                df.to_csv("data_server.csv", index=False)
+                st.success("✅ Đã cập nhật cơ sở dữ liệu chung cho toàn bộ nhân viên!")
+            elif os.path.exists("data_server.csv"):
+                df = pd.read_csv("data_server.csv")
+
+        with tab2:
+            st.subheader("➕ Cấp tài khoản mới cho nhân viên")
+            with st.form("new_user_form", clear_on_submit=True):
+                new_user = st.text_input("Tên đăng nhập (Username):", placeholder="VD: nhanvien2")
+                new_name = st.text_input("Tên hiển thị:", placeholder="VD: Trần Văn B")
+                new_pass = st.text_input("Mật khẩu:", type="password")
+                
+                submitted = st.form_submit_button("Tạo tài khoản")
+                if submitted:
+                    if new_user == "" or new_pass == "":
+                        st.error("⚠️ Vui lòng nhập đầy đủ Username và Mật khẩu!")
+                    elif new_user in credentials['usernames']:
+                        st.error("⚠️ Tên đăng nhập này đã tồn tại!")
+                    else:
+                        # Mã hóa mật khẩu của nhân viên mới
+                        temp_cred = {'usernames': {new_user: {'password': new_pass}}}
+                        stauth.Hasher.hash_passwords(temp_cred)
+                        hashed_pass = temp_cred['usernames'][new_user]['password']
+                        
+                        # Cấp quyền "user" mặc định cho tài khoản con
+                        credentials['usernames'][new_user] = {
+                            'name': new_name,
+                            'password': hashed_pass,
+                            'role': 'user'
+                        }
+                        save_users(credentials) # Lưu vào file
+                        st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công! Nhân viên có thể đăng nhập ngay.")
             
-            # Lưu đè dữ liệu xuống server dưới dạng CSV chuẩn hóa để tài khoản con đọc
-            df.to_csv("data_server.csv", index=False)
-            st.success("✅ Đã cập nhật cơ sở dữ liệu chung cho toàn bộ nhân viên!")
-        
-        # Nếu chưa tải file mới, tự động nạp lại file cũ nếu có
-        elif os.path.exists("data_server.csv"):
-            df = pd.read_csv("data_server.csv")
+            st.subheader("📋 Danh sách tài khoản hiện có:")
+            # Tạo bảng hiển thị danh sách tài khoản
+            user_list = []
+            for uname, info in credentials['usernames'].items():
+                user_list.append({
+                    "Username": uname, 
+                    "Tên hiển thị": info.get('name', ''), 
+                    "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên tra cứu"
+                })
+            st.table(pd.DataFrame(user_list))
 
+    # ================= KHU VỰC DÀNH CHO NHÂN VIÊN CON =================
     else:
-        # Giao diện dành cho tài khoản con (nhanvien1, nhanvien2...)
-        st.info("👤 Quyền Nhân viên: Bạn chỉ được tra cứu dữ liệu đã được Quản trị viên cập nhật.")
-        
+        st.info("👤 Quyền Nhân viên: Bạn chỉ được phép tra cứu dữ liệu từ nguồn do Quản trị viên cập nhật.")
         if os.path.exists("data_server.csv"):
             df = pd.read_csv("data_server.csv")
         else:
             st.warning("⚠️ Quản trị viên chưa cập nhật cơ sở dữ liệu nào lên hệ thống.")
 
-    # 3. KHU VỰC TRUY XUẤT BẰNG AI (Chung cho những ai có dữ liệu)
+    # ================= KHU VỰC HỎI ĐÁP AI (CHUNG) =================
     if df is not None:
         st.subheader("📊 Xem trước dữ liệu:")
         st.dataframe(df.head(5))
