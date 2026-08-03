@@ -260,123 +260,113 @@ elif authentication_status:
                         del credentials['lines'][del_lname]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
 
             st.markdown("---")
-          # ========================================================
-        # 2. BẢNG MÁY MÓC CHO PHÉP CHỈNH SỬA TRỰC TIẾP (INLINE)
-        # ========================================================
-        line_machines = linfo.get('machines', {})
-        
-        # Khởi tạo trạng thái chỉnh sửa cho LINE này bằng session_state
-        edit_key = f"edit_mode_{lname}"
-        if edit_key not in st.session_state:
-            st.session_state[edit_key] = False
-
-        # Đổi tiêu đề dựa trên trạng thái
-        if st.session_state[edit_key]:
-            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
-        else:
-            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
-
-        mac_list = []
-        for m_num, m_info in line_machines.items():
-            mac_list.append({
-                "Số máy (Mã ID)": m_num,
-                "Tên máy": m_info.get('name', ''),
-                "Vị trí (Ô CSV)": m_info.get('position', ''),
-                "Định dạng file": m_info.get('format', 'CSV'),
-                "Đường dẫn": m_info.get('path', ''),
-                "Lấy dữ liệu": bool(m_info.get('active', True))
-            })
+            st.subheader("🏭 Danh sách LINE & Thiết lập (Click vào LINE để cấu hình máy)")
             
-        df_mac = pd.DataFrame(mac_list)
-        if df_mac.empty:
-            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn", "Lấy dữ liệu"])
-
-        if not st.session_state[edit_key]:
-            # TRẠNG THÁI CHỈ XEM
-            st.dataframe(df_mac, hide_index=True, use_container_width=True)
-            
-            if not df_mac.empty:
-                # Nút bấm để BẬT chế độ chỉnh sửa
-                if st.button(f"✏️ Chỉnh sửa bảng máy ({lname})", key=f"btn_edit_{lname}"):
-                    st.session_state[edit_key] = True
-                    st.rerun()
-        else:
-            # TRẠNG THÁI CHỈNH SỬA
-            edited_df = st.data_editor(df_mac,
-                column_config={
-                    "Số máy (Mã ID)": st.column_config.TextColumn("Số máy (Mã ID - Không đổi)", disabled=True),
-                    "Định dạng file": st.column_config.SelectboxColumn("Định dạng file", options=["CSV", "Excel", "TXT", "JSON", "Khác"]),
-                },
-                hide_index=True, use_container_width=True, key=f"editor_{lname}"
-            )
-            
-            if not df_mac.empty:
-                col_b1, col_b2 = st.columns([2, 8])
-                with col_b1:
-                    if st.button(f"💾 Lưu", type="primary", key=f"save_inline_{lname}"):
-                        has_err = False
-                        new_machines = {}
-                        # Hàm làm sạch chuỗi chống lỗi rỗng (NaN)
-                        safe_str = lambda x: "" if pd.isna(x) or x is None else str(x).strip()
+            # --- GIAO DIỆN MỚI: DANH SÁCH LINE THÔNG MINH ---
+            lines_data = credentials.get('lines', {})
+            if not lines_data:
+                st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
+            else:
+                for lname, linfo in lines_data.items():
+                    num_macs = len(linfo.get('machines', {}))
+                    status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
+                    
+                    with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
                         
-                        for idx, row in edited_df.iterrows():
-                            m_num = safe_str(row["Số máy (Mã ID)"])
-                            m_name = safe_str(row["Tên máy"])
-                            if m_name == "":
-                                st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
-                                has_err = True
-                                break
-                            new_machines[m_num] = {
-                                'name': m_name,
-                                'position': safe_str(row["Vị trí (Ô CSV)"]),
-                                'format': safe_str(row["Định dạng file"]),
-                                'path': safe_str(row["Đường dẫn"]),
-                                'active': bool(row["Lấy dữ liệu"])
-                            }
+                        st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
+                        if linfo.get('description'):
+                            st.caption(f"**Ghi chú:** {linfo.get('description')}")
+                        
+                        # ========================================================
+                        # 2. BẢNG MÁY MÓC CHO PHÉP CHỈNH SỬA TRỰC TIẾP (INLINE)
+                        # ========================================================
+                        line_machines = linfo.get('machines', {})
+                        
+                        # Khởi tạo trạng thái chỉnh sửa cho LINE này bằng session_state
+                        edit_key = f"edit_mode_{lname}"
+                        if edit_key not in st.session_state:
+                            st.session_state[edit_key] = False
+
+                        # Đổi tiêu đề dựa trên trạng thái
+                        if st.session_state[edit_key]:
+                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
+                        else:
+                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
+                        
+                        mac_list = []
+                        for m_num, m_info in line_machines.items():
+                            mac_list.append({
+                                "Số máy (Mã ID)": m_num,
+                                "Tên máy": m_info.get('name', ''),
+                                "Vị trí (Ô CSV)": m_info.get('position', ''), 
+                                "Định dạng file": m_info.get('format', 'CSV'),
+                                "Đường dẫn": m_info.get('path', ''),
+                                "Lấy dữ liệu": bool(m_info.get('active', True))
+                            })
+                        
+                        df_mac = pd.DataFrame(mac_list)
+                        if df_mac.empty:
+                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn", "Lấy dữ liệu"])
+
+                        if not st.session_state[edit_key]:
+                            # TRẠNG THÁI CHỈ XEM
+                            st.dataframe(df_mac, hide_index=True, use_container_width=True)
                             
-                        if not has_err:
-                            credentials['lines'][lname]['machines'] = new_machines
-                            save_users(credentials)
-                            st.success(f"✅ Đã lưu thay đổi LINE {lname}!")
-                            
-                            # Tắt chế độ chỉnh sửa sau khi lưu
-                            st.session_state[edit_key] = False 
-                            time.sleep(1)
-                            st.rerun()
-                with col_b2:
-                    if st.button(f"❌ Hủy", key=f"cancel_inline_{lname}"):
-                        # Tắt chế độ chỉnh sửa nếu bấm hủy
-                        st.session_state[edit_key] = False
-                        st.rerun()
-                            if st.button(f"💾 Lưu thay đổi bảng máy ({lname})", key=f"save_inline_{lname}"):
-                                has_err = False
-                                new_machines = {}
-                                
-                                # Hàm làm sạch chuỗi chống lỗi rỗng (NaN)
-                                safe_str = lambda x: "" if pd.isna(x) or x is None else str(x).strip()
-                                
-                                for idx, row in edited_df.iterrows():
-                                    m_num = safe_str(row["Số máy (Mã ID)"])
-                                    m_name = safe_str(row["Tên máy"])
-                                    if m_name == "":
-                                        st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
-                                        has_err = True
-                                        break
-                                    
-                                    new_machines[m_num] = {
-                                        'name': m_name,
-                                        'position': safe_str(row["Vị trí (Ô CSV)"]),
-                                        'format': safe_str(row["Định dạng file"]),
-                                        'path': safe_str(row["Đường dẫn"]),
-                                        'active': bool(row["Lấy dữ liệu"])
-                                    }
-                                
-                                if not has_err:
-                                    credentials['lines'][lname]['machines'] = new_machines
-                                    save_users(credentials)
-                                    st.success(f"✅ Đã lưu cập nhật danh sách máy cho LINE {lname}!")
-                                    time.sleep(1)
+                            if not df_mac.empty:
+                                # Nút bấm để BẬT chế độ chỉnh sửa
+                                if st.button(f"✏️ Chỉnh sửa bảng máy ({lname})", key=f"btn_edit_{lname}"):
+                                    st.session_state[edit_key] = True
                                     st.rerun()
+                        else:
+                            # TRẠNG THÁI CHỈNH SỬA
+                            edited_df = st.data_editor(
+                                df_mac,
+                                column_config={
+                                    "Số máy (Mã ID)": st.column_config.TextColumn("Số máy (Mã ID - Không đổi)", disabled=True),
+                                    "Định dạng file": st.column_config.SelectboxColumn("Định dạng file", options=["CSV", "Excel", "TXT", "JSON", "Khác"]),
+                                },
+                                hide_index=True,
+                                use_container_width=True,
+                                key=f"editor_{lname}"
+                            )
+                            
+                            if not df_mac.empty:
+                                col_b1, col_b2 = st.columns([2, 8])
+                                with col_b1:
+                                    if st.button(f"💾 Lưu", type="primary", key=f"save_inline_{lname}"):
+                                        has_err = False
+                                        new_machines = {}
+                                        
+                                        # Hàm làm sạch chuỗi chống lỗi rỗng (NaN)
+                                        safe_str = lambda x: "" if pd.isna(x) or x is None else str(x).strip()
+                                        
+                                        for idx, row in edited_df.iterrows():
+                                            m_num = safe_str(row["Số máy (Mã ID)"])
+                                            m_name = safe_str(row["Tên máy"])
+                                            if m_name == "":
+                                                st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
+                                                has_err = True
+                                                break
+                                            
+                                            new_machines[m_num] = {
+                                                'name': m_name,
+                                                'position': safe_str(row["Vị trí (Ô CSV)"]),
+                                                'format': safe_str(row["Định dạng file"]),
+                                                'path': safe_str(row["Đường dẫn"]),
+                                                'active': bool(row["Lấy dữ liệu"])
+                                            }
+                                        
+                                        if not has_err:
+                                            credentials['lines'][lname]['machines'] = new_machines
+                                            save_users(credentials)
+                                            st.success(f"✅ Đã lưu thay đổi LINE {lname}!")
+                                            st.session_state[edit_key] = False 
+                                            time.sleep(1)
+                                            st.rerun()
+                                with col_b2:
+                                    if st.button(f"❌ Hủy", key=f"cancel_inline_{lname}"):
+                                        st.session_state[edit_key] = False
+                                        st.rerun()
 
                         st.write("") # Dấu cách cho thoáng
                         
