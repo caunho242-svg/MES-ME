@@ -13,21 +13,19 @@ USER_FILE = "users.json"
 
 def load_users():
     if os.path.exists(USER_FILE):
-        # Nếu đã có file, tải danh sách tài khoản (đã được mã hóa mật khẩu)
         with open(USER_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     else:
-        # Nếu chưa có, tạo tài khoản Admin mặc định
         default_creds = {
             'usernames': {
                 'admin': {
                     'name': 'Quản trị viên',
                     'password': 'admin123',
-                    'role': 'admin' # Quyền cao nhất
+                    'role': 'admin',
+                    'position': 'Quản lý Hệ thống' # Đã thêm mục chức vụ mặc định
                 }
             }
         }
-        # Mã hóa mật khẩu lần đầu và lưu file
         stauth.Hasher.hash_passwords(default_creds)
         with open(USER_FILE, "w", encoding="utf-8") as f:
             json.dump(default_creds, f, ensure_ascii=False, indent=4)
@@ -42,7 +40,6 @@ def save_users(creds):
 # -------------------------------------------------------------------
 st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
 
-# Tải credentials từ file JSON
 credentials = load_users()
 
 authenticator = stauth.Authenticate(
@@ -67,7 +64,12 @@ elif authentication_status:
     # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
     # -------------------------------------------------------------------
     authenticator.logout('Đăng xuất', 'sidebar')
-    st.title(f"🤖 Trợ lý AI Truy xuất Dữ liệu - Xin chào {name}!")
+    
+    # Lấy chức vụ của người đang đăng nhập để hiển thị lời chào
+    current_user_info = credentials['usernames'].get(username, {})
+    current_position = current_user_info.get('position', 'Nhân viên')
+    
+    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position})!")
     st.markdown("---")
 
     with st.sidebar:
@@ -76,15 +78,13 @@ elif authentication_status:
         st.info("Lưu ý: API Key không được lưu lại để đảm bảo bảo mật.")
 
     df = None 
-    # Xác định quyền của người dùng hiện tại
-    user_role = credentials['usernames'][username].get('role', 'user')
+    user_role = current_user_info.get('role', 'user')
 
     # ================= KHU VỰC DÀNH RIÊNG CHO ADMIN =================
     if user_role == 'admin':
         st.success("👑 Quyền Quản trị viên")
         
-        # Chia giao diện làm 2 Tab
-        tab1, tab2 = st.tabs(["📂 Cập nhật Dữ liệu", "👥 Quản lý Tài khoản (Cấp quyền)"])
+        tab1, tab2 = st.tabs(["📂 Cập nhật Dữ liệu", "👥 Quản lý Tài khoản"])
         
         with tab1:
             uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
@@ -103,6 +103,8 @@ elif authentication_status:
             with st.form("new_user_form", clear_on_submit=True):
                 new_user = st.text_input("Tên đăng nhập (Username):", placeholder="VD: nhanvien2")
                 new_name = st.text_input("Tên hiển thị:", placeholder="VD: Trần Văn B")
+                # ---> THÊM Ô NHẬP CHỨC VỤ Ở ĐÂY <---
+                new_position = st.text_input("Chức vụ / Phòng ban:", placeholder="VD: Kế toán, Kho, Tổ trưởng Line 1...") 
                 new_pass = st.text_input("Mật khẩu:", type="password")
                 
                 submitted = st.form_submit_button("Tạo tài khoản")
@@ -112,27 +114,26 @@ elif authentication_status:
                     elif new_user in credentials['usernames']:
                         st.error("⚠️ Tên đăng nhập này đã tồn tại!")
                     else:
-                        # Mã hóa mật khẩu của nhân viên mới
                         temp_cred = {'usernames': {new_user: {'password': new_pass}}}
                         stauth.Hasher.hash_passwords(temp_cred)
                         hashed_pass = temp_cred['usernames'][new_user]['password']
                         
-                        # Cấp quyền "user" mặc định cho tài khoản con
                         credentials['usernames'][new_user] = {
                             'name': new_name,
                             'password': hashed_pass,
-                            'role': 'user'
+                            'role': 'user',
+                            'position': new_position if new_position != "" else "Chưa cập nhật" # Lưu chức vụ
                         }
-                        save_users(credentials) # Lưu vào file
-                        st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công! Nhân viên có thể đăng nhập ngay.")
+                        save_users(credentials) 
+                        st.success(f"✅ Đã tạo tài khoản '{new_user}' (Chức vụ: {new_position}) thành công!")
             
             st.subheader("📋 Danh sách tài khoản hiện có:")
-            # Tạo bảng hiển thị danh sách tài khoản
             user_list = []
             for uname, info in credentials['usernames'].items():
                 user_list.append({
                     "Username": uname, 
                     "Tên hiển thị": info.get('name', ''), 
+                    "Chức vụ": info.get('position', 'Chưa cập nhật'), # Hiển thị chức vụ lên bảng
                     "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên tra cứu"
                 })
             st.table(pd.DataFrame(user_list))
