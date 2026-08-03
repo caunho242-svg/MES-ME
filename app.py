@@ -225,8 +225,9 @@ elif authentication_status:
             line_list = []
             for lname, linfo in credentials.get('lines', {}).items():
                 line_list.append({
+                    "Số LINE": linfo.get('number', 'Chưa cập nhật'), # <--- THÊM HIỂN THỊ SỐ LINE
                     "Tên LINE": lname,
-                    "Khu vực": linfo.get('area', 'Chưa cập nhật'), # <--- THÊM HIỂN THỊ KHU VỰC
+                    "Khu vực": linfo.get('area', 'Chưa cập nhật'),
                     "Mô tả": linfo.get('description', ''),
                     "Trạng thái": linfo.get('status', 'Chờ phê duyệt')
                 })
@@ -241,8 +242,9 @@ elif authentication_status:
                 with st.form("new_line_form", clear_on_submit=True):
                     col1, col2 = st.columns(2)
                     with col1:
+                        new_lnumber = st.text_input("Số LINE (Tùy chọn):", placeholder="VD: 01, 02, L05...") # <--- THÊM NHẬP SỐ LINE
                         new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung, Xưởng A...")
-                        new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A, Tầng 1...") # <--- THÊM NHẬP KHU VỰC
+                        new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A, Tầng 1...") 
                     with col2:
                         new_ldescription = st.text_input("Mô tả / Ghi chú:")
                         new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Chờ phê duyệt"])
@@ -254,6 +256,7 @@ elif authentication_status:
                             st.error("⚠️ Tên LINE này đã tồn tại!")
                         else:
                             credentials['lines'][new_lname] = {
+                                'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật", # <--- LƯU SỐ LINE
                                 'area': new_larea.strip() if new_larea.strip() != "" else "Chưa cập nhật",
                                 'description': new_ldescription.strip(),
                                 'status': new_lstatus
@@ -273,11 +276,13 @@ elif authentication_status:
                     if edit_lname:
                         line_info = credentials['lines'][edit_lname]
                         with st.form("edit_line_form"):
-                            el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) # <--- SỬA KHU VỰC
+                            el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) # <--- SỬA SỐ LINE
+                            el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
                             el_desc = st.text_input("Mô tả:", value=line_info.get('description', ''))
                             el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Chờ phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
                             
                             if st.form_submit_button("Cập nhật LINE"):
+                                credentials['lines'][edit_lname]['number'] = el_number.strip() # <--- CẬP NHẬT SỐ LINE
                                 credentials['lines'][edit_lname]['area'] = el_area.strip()
                                 credentials['lines'][edit_lname]['description'] = el_desc.strip()
                                 credentials['lines'][edit_lname]['status'] = el_status
