@@ -23,8 +23,7 @@ def load_users():
                     'password': 'admin123',
                     'role': 'admin',
                     'position': 'Quản lý',
-                    'department': 'Hệ thống',
-                    'line': 'Tất cả' # Thêm mục Line mặc định cho Admin
+                    'department': 'Hệ thống'
                 }
             }
         }
@@ -70,10 +69,9 @@ elif authentication_status:
     current_user_info = credentials['usernames'].get(username, {})
     current_position = current_user_info.get('position', 'Nhân viên')
     current_department = current_user_info.get('department', 'Chưa rõ')
-    current_line = current_user_info.get('line', 'Chưa rõ')
     
-    # Tiêu đề hiển thị thêm mục Line
-    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position} - {current_department} - {current_line})!")
+    # Tiêu đề hiển thị: Tên (Chức vụ - Phòng ban)
+    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position} - {current_department})!")
     st.markdown("---")
 
     with st.sidebar:
@@ -103,7 +101,7 @@ elif authentication_status:
             elif os.path.exists("data_server.csv"):
                 df = pd.read_csv("data_server.csv")
 
-        # TAB 2: QUẢN LÝ TÀI KHOẢN
+        # TAB 2: QUẢN LÝ TÀI KHOẢN (Bảng điều khiển siêu cấp)
         with tab2:
             st.subheader("📋 Danh sách tài khoản hiện có")
             user_list = []
@@ -113,7 +111,6 @@ elif authentication_status:
                     "Tên hiển thị": info.get('name', ''), 
                     "Chức vụ": info.get('position', 'Chưa cập nhật'),
                     "Phòng ban": info.get('department', 'Chưa cập nhật'),
-                    "LINE": info.get('line', 'Chưa cập nhật'), # <--- CỘT LINE TRÊN BẢNG
                     "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên tra cứu"
                 })
             st.table(pd.DataFrame(user_list))
@@ -125,11 +122,11 @@ elif authentication_status:
                     with col1:
                         new_user = st.text_input("Tên đăng nhập (Username)*:", placeholder="VD: nhanvien2")
                         new_name = st.text_input("Tên hiển thị*:", placeholder="VD: Trần Văn B")
-                        new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng, Kế toán viên...") 
                     with col2:
-                        new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Tài chính...")
-                        new_line = st.text_input("LINE:", placeholder="VD: Line 1, Line 2, Lò nung...") # <--- Ô NHẬP LINE
-                        new_pass = st.text_input("Mật khẩu*:", type="password")
+                        new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng, Kế toán viên...") 
+                        new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Line 1, Tài chính...")
+                    
+                    new_pass = st.text_input("Mật khẩu*:", type="password")
                     
                     if st.form_submit_button("Tạo tài khoản"):
                         if new_user == "" or new_pass == "" or new_name == "":
@@ -146,43 +143,40 @@ elif authentication_status:
                                 'password': hashed_pass,
                                 'role': 'user',
                                 'position': new_position if new_position != "" else "Chưa cập nhật",
-                                'department': new_dept if new_dept != "" else "Chưa cập nhật",
-                                'line': new_line if new_line != "" else "Chưa cập nhật" # <--- LƯU LINE
+                                'department': new_dept if new_dept != "" else "Chưa cập nhật"
                             }
                             save_users(credentials) 
                             st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công!")
                             st.rerun()
 
-            # --- CHỈNH SỬA ---
+# --- CHỈNH SỬA ---
             with st.expander("✏️ Chỉnh sửa thông tin tài khoản"):
-                import time 
+                import time # Thêm thư viện để tạo khoảng chờ thông báo
                 
                 edit_user = st.selectbox("Chọn tài khoản cần sửa:", list(credentials['usernames'].keys()), key="edit_select")
                 if edit_user:
                     edit_info = credentials['usernames'][edit_user]
                     with st.form("edit_user_form"):
                         e_name = st.text_input("Tên hiển thị*:", value=edit_info.get('name', ''))
-                        
-                        col1, col2, col3 = st.columns(3) # Chia làm 3 cột cho cân đối
+                        col1, col2 = st.columns(2)
                         with col1:
                             e_pos = st.text_input("Chức vụ:", value=edit_info.get('position', ''))
                         with col2:
                             e_dept = st.text_input("Phòng ban:", value=edit_info.get('department', ''))
-                        with col3:
-                            e_line = st.text_input("LINE:", value=edit_info.get('line', '')) # <--- SỬA LINE
                             
                         e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi):", type="password")
                         
                         if st.form_submit_button("Cập nhật tài khoản"):
+                            # 1. KIỂM TRA LỖI (BÁO THẤT BẠI)
                             if e_name.strip() == "":
                                 st.error("❌ Cập nhật thất bại: 'Tên hiển thị' không được để trống!")
                             elif e_pass != "" and len(e_pass) < 5:
                                 st.error("❌ Cập nhật thất bại: Mật khẩu mới phải có ít nhất 5 ký tự!")
                             else:
+                                # 2. TIẾN HÀNH CẬP NHẬT (NẾU KHÔNG CÓ LỖI)
                                 credentials['usernames'][edit_user]['name'] = e_name.strip()
                                 credentials['usernames'][edit_user]['position'] = e_pos.strip()
                                 credentials['usernames'][edit_user]['department'] = e_dept.strip()
-                                credentials['usernames'][edit_user]['line'] = e_line.strip() # <--- LƯU LINE SỬA
                                 
                                 if e_pass != "":
                                     t_cred = {'usernames': {edit_user: {'password': e_pass}}}
@@ -191,8 +185,13 @@ elif authentication_status:
                                 
                                 save_users(credentials)
                                 st.success(f"✅ Đã cập nhật thành công tài khoản '{edit_user}'!")
+                                
+                                # Dừng 1.5 giây để người dùng kịp đọc thông báo trước khi hệ thống tải lại trang
                                 time.sleep(1.5) 
                                 st.rerun()
+                            save_users(credentials)
+                            st.success(f"✅ Đã cập nhật thành công tài khoản {edit_user}!")
+                            st.rerun()
 
             # --- XÓA ---
             with st.expander("❌ Xóa tài khoản"):
@@ -206,8 +205,6 @@ elif authentication_status:
                         del credentials['usernames'][del_user]
                         save_users(credentials)
                         st.success(f"✅ Đã xóa tài khoản {del_user}!")
-                        import time
-                        time.sleep(1.5)
                         st.rerun()
 
     # ================= KHU VỰC DÀNH CHO NHÂN VIÊN CON =================
