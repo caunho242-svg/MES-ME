@@ -262,7 +262,7 @@ elif authentication_status:
             st.markdown("---")
             st.subheader("🏭 Danh sách LINE & Thiết lập (Click vào LINE để cấu hình máy)")
             
-            # --- GIAO DIỆN MỚI: DANH SÁCH LINE THÔNG MINH (ACCORDION) ---
+            # --- GIAO DIỆN MỚI: DANH SÁCH LINE THÔNG MINH ---
             lines_data = credentials.get('lines', {})
             if not lines_data:
                 st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
@@ -271,43 +271,88 @@ elif authentication_status:
                     num_macs = len(linfo.get('machines', {}))
                     status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
                     
-                    # Mỗi LINE là một thanh bấm mở rộng
                     with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
                         
-                        # 1. Thông tin chung của LINE
                         st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
                         if linfo.get('description'):
                             st.caption(f"**Ghi chú:** {linfo.get('description')}")
                         
-                        # 2. Bảng danh sách Máy móc đang có
+                        # ========================================================
+                        # 2. BẢNG MÁY MÓC CHO PHÉP CHỈNH SỬA TRỰC TIẾP (INLINE)
+                        # ========================================================
                         line_machines = linfo.get('machines', {})
-                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
-                        if line_machines:
-                            mac_list = []
-                            for m_num, m_info in line_machines.items():
-                                mac_list.append({
-                                    "Số máy": m_num,
-                                    "Tên máy": m_info.get('name', ''),
-                                    "Vị trí (Ô CSV)": m_info.get('position', '---'), # <--- THÊM CỘT VỊ TRÍ
-                                    "Định dạng file": m_info.get('format', ''),
-                                    "Đường dẫn": m_info.get('path', ''),
-                                    "Lấy dữ liệu": "✅ Có" if m_info.get('active') else "❌ Chưa lấy"
-                                })
-                            st.table(pd.DataFrame(mac_list))
-                        else:
-                            st.info("LINE này chưa có thiết lập máy nào.")
-                            
-                        # --- CÁC TAB QUẢN LÝ MÁY TRONG LINE NÀY ---
-                        mac_tab1, mac_tab2, mac_tab3 = st.tabs(["➕ Thêm máy mới", "✏️ Chỉnh sửa máy", "❌ Xóa máy"])
+                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Chỉnh sửa trực tiếp vào bảng)*:**")
                         
-                        # TAB 1: THÊM MÁY
-                        with mac_tab1:
+                        mac_list = []
+                        for m_num, m_info in line_machines.items():
+                            mac_list.append({
+                                "Số máy (Mã ID)": m_num,
+                                "Tên máy": m_info.get('name', ''),
+                                "Vị trí (Ô CSV)": m_info.get('position', ''), 
+                                "Định dạng file": m_info.get('format', 'CSV'),
+                                "Đường dẫn": m_info.get('path', ''),
+                                "Lấy dữ liệu": bool(m_info.get('active', True))
+                            })
+                        
+                        df_mac = pd.DataFrame(mac_list)
+                        if df_mac.empty:
+                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn", "Lấy dữ liệu"])
+
+                        # Trình soạn thảo bảng (Thay thế hoàn toàn st.table)
+                        edited_df = st.data_editor(
+                            df_mac,
+                            column_config={
+                                "Số máy (Mã ID)": st.column_config.TextColumn("Số máy (Mã ID - Không đổi)", disabled=True),
+                                "Định dạng file": st.column_config.SelectboxColumn("Định dạng file", options=["CSV", "Excel", "TXT", "JSON", "Khác"]),
+                            },
+                            hide_index=True,
+                            use_container_width=True,
+                            key=f"editor_{lname}"
+                        )
+                        
+                        if not df_mac.empty:
+                            if st.button(f"💾 Lưu thay đổi bảng máy ({lname})", key=f"save_inline_{lname}"):
+                                has_err = False
+                                new_machines = {}
+                                
+                                # Hàm làm sạch chuỗi chống lỗi rỗng (NaN)
+                                safe_str = lambda x: "" if pd.isna(x) or x is None else str(x).strip()
+                                
+                                for idx, row in edited_df.iterrows():
+                                    m_num = safe_str(row["Số máy (Mã ID)"])
+                                    m_name = safe_str(row["Tên máy"])
+                                    if m_name == "":
+                                        st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
+                                        has_err = True
+                                        break
+                                    
+                                    new_machines[m_num] = {
+                                        'name': m_name,
+                                        'position': safe_str(row["Vị trí (Ô CSV)"]),
+                                        'format': safe_str(row["Định dạng file"]),
+                                        'path': safe_str(row["Đường dẫn"]),
+                                        'active': bool(row["Lấy dữ liệu"])
+                                    }
+                                
+                                if not has_err:
+                                    credentials['lines'][lname]['machines'] = new_machines
+                                    save_users(credentials)
+                                    st.success(f"✅ Đã lưu cập nhật danh sách máy cho LINE {lname}!")
+                                    time.sleep(1)
+                                    st.rerun()
+
+                        st.write("") # Dấu cách cho thoáng
+                        
+                        # --- CHỈ CÒN LẠI 2 TAB: THÊM MỚI VÀ XÓA ---
+                        tab_add, tab_del = st.tabs(["➕ Thêm máy mới", "❌ Xóa máy"])
+                        
+                        with tab_add:
                             with st.form(f"add_mac_form_{lname}", clear_on_submit=True):
                                 col_m1, col_m2 = st.columns(2)
                                 with col_m1:
                                     mac_num = st.text_input("Số máy* (Mã định danh):", placeholder="VD: M01", key=f"add_num_{lname}")
                                     mac_name = st.text_input("Tên máy*:", placeholder="VD: Máy Cắt CNC", key=f"add_name_{lname}")
-                                    mac_pos = st.text_input("Vị trí (Ô trong CSV):", placeholder="VD: A5, B2...", help="Điền ô chứa dữ liệu mốc để lấy cả dòng", key=f"add_pos_{lname}") # <--- THÊM Ô VỊ TRÍ
+                                    mac_pos = st.text_input("Vị trí (Ô trong CSV):", placeholder="VD: A5, B2...", help="Điền ô chứa dữ liệu mốc để lấy cả dòng", key=f"add_pos_{lname}")
                                 with col_m2:
                                     mac_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "TXT", "JSON", "Khác"], key=f"add_fmt_{lname}")
                                     mac_path = st.text_input("Đường dẫn / Link Folder:", placeholder="VD: C:/Data/May01", key=f"add_path_{lname}")
@@ -318,13 +363,13 @@ elif authentication_status:
                                     if mac_num.strip() == "" or mac_name.strip() == "":
                                         st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
                                     elif mac_num.strip() in line_machines:
-                                        st.error("⚠️ Số máy này đã tồn tại! Vui lòng dùng tab 'Chỉnh sửa máy'.")
+                                        st.error("⚠️ Số máy này đã tồn tại!")
                                     else:
                                         if 'machines' not in credentials['lines'][lname]:
                                             credentials['lines'][lname]['machines'] = {}
                                         credentials['lines'][lname]['machines'][mac_num.strip()] = {
                                             'name': mac_name.strip(),
-                                            'position': mac_pos.strip(), # <--- LƯU VỊ TRÍ
+                                            'position': mac_pos.strip(), 
                                             'format': mac_format,
                                             'path': mac_path.strip(),
                                             'active': mac_active
@@ -334,45 +379,7 @@ elif authentication_status:
                                         time.sleep(1.5)
                                         st.rerun()
 
-                        # TAB 2: CHỈNH SỬA MÁY
-                        with mac_tab2:
-                            if not line_machines:
-                                st.info("Chưa có máy nào để chỉnh sửa.")
-                            else:
-                                edit_mac_num = st.selectbox("Chọn máy cần sửa:", list(line_machines.keys()), key=f"edit_mac_sel_{lname}")
-                                if edit_mac_num:
-                                    mac_info = line_machines[edit_mac_num]
-                                    with st.form(f"edit_mac_form_{lname}"):
-                                        col_e1, col_e2 = st.columns(2)
-                                        with col_e1:
-                                            e_mac_name = st.text_input("Tên máy*:", value=mac_info.get('name', ''), key=f"e_mac_name_{lname}")
-                                            e_mac_pos = st.text_input("Vị trí (Ô trong CSV):", value=mac_info.get('position', ''), key=f"e_mac_pos_{lname}") # <--- SỬA VỊ TRÍ
-                                        with col_e2:
-                                            fmt_options = ["CSV", "Excel", "TXT", "JSON", "Khác"]
-                                            curr_fmt = mac_info.get('format', 'CSV')
-                                            e_mac_fmt = st.selectbox("Định dạng file:", fmt_options, index=fmt_options.index(curr_fmt) if curr_fmt in fmt_options else 0, key=f"e_mac_fmt_{lname}")
-                                            e_mac_path = st.text_input("Đường dẫn / Link Folder:", value=mac_info.get('path', ''), key=f"e_mac_path_{lname}")
-                                        
-                                        e_mac_active = st.checkbox("Kích hoạt (Tích chọn để lấy dữ liệu)", value=mac_info.get('active', True), key=f"e_mac_act_{lname}")
-                                        
-                                        if st.form_submit_button("Cập nhật Máy"):
-                                            if e_mac_name.strip() == "":
-                                                st.error("⚠️ Tên máy không được để trống!")
-                                            else:
-                                                credentials['lines'][lname]['machines'][edit_mac_num].update({
-                                                    'name': e_mac_name.strip(),
-                                                    'position': e_mac_pos.strip(), # <--- LƯU CẬP NHẬT
-                                                    'format': e_mac_fmt,
-                                                    'path': e_mac_path.strip(),
-                                                    'active': e_mac_active
-                                                })
-                                                save_users(credentials)
-                                                st.success(f"✅ Đã cập nhật máy '{edit_mac_num}'!")
-                                                time.sleep(1.5)
-                                                st.rerun()
-
-                        # TAB 3: XÓA MÁY
-                        with mac_tab3:
+                        with tab_del:
                             if not line_machines:
                                 st.info("Chưa có máy nào để xóa.")
                             else:
