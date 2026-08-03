@@ -18,8 +18,6 @@ credentials = {
         }
     }
 }
-
-authenticator = stauth.Authenticate(
     credentials,
     'excel_ai_cookie',
     'auth_key_123456',
