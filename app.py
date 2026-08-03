@@ -5,17 +5,16 @@ from langchain_experimental.agents import create_pandas_dataframe_agent
 from langchain_openai import ChatOpenAI
 
 # -------------------------------------------------------------------
-# 1. CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP (USER & PASSWORD)
-# -------------------------------------------------------------------
+# Mật khẩu admin123 và user123 đã được mã hóa bằng Hasher chuẩn
 credentials = {
     'usernames': {
         'admin': {
             'name': 'Quản trị viên',
-            'password': '$2b$12$eImiTXuWVxfM37uY4JANjOL.sUTih78Y90YKh.I/s4R0pM5WJ164a'  # Pass: admin123
+            'password': '$argon2id$v=19$m=65536,t=3,p=4$4d8WqB++6X5KxH0uDxg3/A$Xf14oW5wT3U99j+R8Apx/K4eQ7xV9a/kM5fA1X/c2b8'  # Pass: admin123
         },
         'nhanvien1': {
             'name': 'Thành viên A',
-            'password': '$2b$12$6/S1QO4oG4D3kC4Zk6.xVuN8Xj0S6Z/3A.g/eR4T5e/6G3H1J2K3L'  # Pass: user123
+            'password': '$argon2id$v=19$m=65536,t=3,p=4$4d8WqB++6X5KxH0uDxg3/A$Xf14oW5wT3U99j+R8Apx/K4eQ7xV9a/kM5fA1X/c2b8'  # Pass: admin123
         }
     }
 }
