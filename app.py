@@ -30,20 +30,20 @@ authenticator = stauth.Authenticate(
 # -------------------------------------------------------------------
 # 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
 # -------------------------------------------------------------------
+# ✅ ĐOẠN MÃ MỚI ĐÃ SỬA:
 st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
 
-name, authentication_status, username = authenticator.login('Đăng nhập hệ thống', 'main')
+# Gọi hàm login chuẩn tương thích phiên bản mới
+authenticator.login(location='main')
+
+authentication_status = st.session_state.get('authentication_status')
+name = st.session_state.get('name')
 
 if authentication_status == False:
     st.error('Tài khoản hoặc mật khẩu không chính xác!')
 elif authentication_status == None:
     st.warning('Vui lòng nhập Nickname và Mật khẩu để tiếp tục.')
 elif authentication_status:
-    # -------------------------------------------------------------------
-    # 3. GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP THÀNH CÔNG
-    # -------------------------------------------------------------------
-    authenticator.logout('Đăng xuất', 'sidebar')
-    st.title(f"🤖 Trợ lý AI Truy xuất Excel - Xin chào {name}!")
     st.markdown("---")
 
     with st.sidebar:
