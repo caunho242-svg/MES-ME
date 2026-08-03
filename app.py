@@ -9,8 +9,7 @@ import os
 # 1. CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP (USER & PASSWORD)
 # -------------------------------------------------------------------
 # Tự động mã hóa mật khẩu bằng Hasher chuẩn của thư viện để tránh lỗi
-hashed_passwords = stauth.Hasher(['admin123', 'user123']).generate()
-
+hashed_passwords = stauth.Hasher.hash_passwords(['admin123', 'user123'])
 credentials = {
     'usernames': {
         'admin': {
