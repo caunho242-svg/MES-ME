@@ -1,8 +1,56 @@
-import os # Thêm thư viện quản lý file
+import streamlit as st
+import pandas as pd
+import streamlit_authenticator as stauth
+from langchain_experimental.agents import create_pandas_dataframe_agent
+from langchain_openai import ChatOpenAI
+import os
 
-# ... (Giữ nguyên phần cấu hình mật khẩu và đăng nhập ở trên) ...
+# -------------------------------------------------------------------
+# 1. CẤU HÌNH TÀI KHOẢN ĐĂNG NHẬP (USER & PASSWORD)
+# -------------------------------------------------------------------
+# Tự động mã hóa mật khẩu bằng Hasher chuẩn của thư viện để tránh lỗi
+hashed_passwords = stauth.Hasher(['admin123', 'user123']).generate()
 
+credentials = {
+    'usernames': {
+        'admin': {
+            'name': 'Quản trị viên',
+            'password': hashed_passwords[0] # Tương ứng mật khẩu: admin123
+        },
+        'nhanvien1': {
+            'name': 'Thành viên A',
+            'password': hashed_passwords[1] # Tương ứng mật khẩu: user123
+        }
+    }
+}
+
+authenticator = stauth.Authenticate(
+    credentials,
+    'excel_ai_cookie',
+    'auth_key_123456',
+    cookie_expiry_days=1
+)
+
+# -------------------------------------------------------------------
+# 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
+# -------------------------------------------------------------------
+st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
+
+# Gọi hàm login chuẩn tương thích phiên bản mới
+authenticator.login(location='main')
+
+authentication_status = st.session_state.get('authentication_status')
+name = st.session_state.get('name')
+username = st.session_state.get('username')
+
+if authentication_status == False:
+    st.error('Tài khoản hoặc mật khẩu không chính xác!')
+elif authentication_status == None:
+    st.warning('Vui lòng nhập Nickname và Mật khẩu để tiếp tục.')
 elif authentication_status:
+    # -------------------------------------------------------------------
+    # 3. GIAO DIỆN CHÍNH SAU KHI ĐĂNG NHẬP THÀNH CÔNG
+    # -------------------------------------------------------------------
     authenticator.logout('Đăng xuất', 'sidebar')
     st.title(f"🤖 Trợ lý AI Truy xuất Dữ liệu - Xin chào {name}!")
     st.markdown("---")
