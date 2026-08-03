@@ -93,15 +93,28 @@ elif authentication_status:
 
     # ================= KHU VỰC DÀNH RIÊNG CHO ADMIN =================
     if user_role == 'admin':
-        st.success("👑 Quyền Quản trị viên")
         
-        tab1, tab2, tab3 = st.tabs(["📂 Cập nhật Dữ liệu", "👥 Quản lý Tài khoản", "🏭 Quản lý LINE"])
+        # --- CƠ CHẾ ĐIỀU HƯỚNG MỚI ĐỂ HỖ TRỢ NÚT TRANG CHỦ ---
+        menu_options = ["📂 Cập nhật Dữ liệu (Trang chủ)", "👥 Quản lý Tài khoản", "🏭 Quản lý LINE"]
+        
+        if "admin_menu" not in st.session_state:
+            st.session_state.admin_menu = menu_options[0]
+            
+        def go_home():
+            st.session_state.admin_menu = menu_options[0]
+
+        # Tiêu đề và Nút Trang chủ được ghim cố định ở trên cùng
+        col1, col2 = st.columns([8.5, 1.5])
+        with col1:
+            st.success("👑 Quyền Quản trị viên")
+        with col2:
+            st.button("🏠 Trang chủ", on_click=go_home, use_container_width=True)
+
+        selected_tab = st.radio("Điều hướng:", menu_options, horizontal=True, key="admin_menu", label_visibility="collapsed")
+        st.markdown("---")
         
         # TAB 1: TẢI FILE
-        with tab1:
-            if st.button("🏠 Trở lại trang chủ", key="home_tab1"):
-                st.rerun()
-                
+        if selected_tab == menu_options[0]:
             uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
             if uploaded_file is not None:
                 if uploaded_file.name.endswith('.csv'):
@@ -114,10 +127,7 @@ elif authentication_status:
                 df = pd.read_csv("data_server.csv")
 
         # TAB 2: QUẢN LÝ TÀI KHOẢN
-        with tab2:
-            if st.button("🏠 Trở lại trang chủ", key="home_tab2"):
-                st.rerun()
-                
+        elif selected_tab == menu_options[1]:
             st.subheader("📋 Danh sách tài khoản hiện có")
             user_list = []
             for uname, info in credentials['usernames'].items():
@@ -199,10 +209,7 @@ elif authentication_status:
                         del credentials['usernames'][del_user]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
 
         # TAB 3: QUẢN LÝ LINE
-        with tab3:
-            if st.button("🏠 Trở lại trang chủ", key="home_tab3"):
-                st.rerun()
-                
+        elif selected_tab == menu_options[2]:
             manager_options = ["Chưa phân công"]
             for u_name, u_info in credentials['usernames'].items():
                 manager_options.append(f"{u_name} ({u_info.get('name', '')})")
