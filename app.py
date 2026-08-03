@@ -16,7 +16,6 @@ def load_users():
     if os.path.exists(USER_FILE):
         with open(USER_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            # Thêm cấu trúc 'lines' nếu file json cũ chưa có
             if 'lines' not in data:
                 data['lines'] = {}
             return data
@@ -89,8 +88,9 @@ elif authentication_status:
     df = None 
     user_role = current_user_info.get('role', 'user')
 
-    # Danh sách các LINE để dùng cho các menu chọn
-    line_options = ["Chưa cập nhật", "Tất cả"] + list(credentials.get('lines', {}).keys())
+    # Lọc ra danh sách các LINE ĐÃ PHÊ DUYỆT để đưa vào menu gán tài khoản
+    approved_lines = [lname for lname, linfo in credentials.get('lines', {}).items() if linfo.get('status') == 'Đã phê duyệt']
+    line_options = ["Chưa cập nhật", "Tất cả"] + approved_lines
 
     # ================= KHU VỰC DÀNH RIÊNG CHO ADMIN =================
     if user_role == 'admin':
@@ -122,7 +122,7 @@ elif authentication_status:
                     "Chức vụ": info.get('position', 'Chưa cập nhật'),
                     "Phòng ban": info.get('department', 'Chưa cập nhật'),
                     "LINE": info.get('line', 'Chưa cập nhật'),
-                    "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên tra cứu"
+                    "Quyền": "Quản trị viên" if info.get('role') == 'admin' else "Nhân viên"
                 })
             st.table(pd.DataFrame(user_list))
 
@@ -136,7 +136,7 @@ elif authentication_status:
                         new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng...") 
                     with col2:
                         new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Tài chính...")
-                        new_line = st.selectbox("LINE:", line_options) # Tự động lấy danh sách Line
+                        new_line = st.selectbox("LINE:", line_options) # Chỉ hiển thị Line đã duyệt
                         new_pass = st.text_input("Mật khẩu*:", type="password")
                     
                     if st.form_submit_button("Tạo tài khoản"):
@@ -178,7 +178,7 @@ elif authentication_status:
                         with col3:
                             curr_line = edit_info.get('line', 'Chưa cập nhật')
                             if curr_line not in line_options:
-                                line_options.append(curr_line)
+                                line_options.append(curr_line) # Giữ lại hiển thị nếu nhân viên đang thuộc Line chưa duyệt
                             e_line = st.selectbox("LINE:", line_options, index=line_options.index(curr_line))
                             
                         e_pass = st.text_input("Mật khẩu mới (để trống nếu không muốn đổi):", type="password")
@@ -219,17 +219,17 @@ elif authentication_status:
                         time.sleep(1.5)
                         st.rerun()
 
-        # TAB 3: QUẢN LÝ LINE MỚI
+        # TAB 3: QUẢN LÝ LINE
         with tab3:
             st.subheader("🏭 Danh sách LINE hiện có")
             line_list = []
             for lname, linfo in credentials.get('lines', {}).items():
                 line_list.append({
-                    "Số LINE": linfo.get('number', 'Chưa cập nhật'), # <--- THÊM HIỂN THỊ SỐ LINE
+                    "Số LINE": linfo.get('number', 'Chưa cập nhật'), 
                     "Tên LINE": lname,
                     "Khu vực": linfo.get('area', 'Chưa cập nhật'),
                     "Mô tả": linfo.get('description', ''),
-                    "Trạng thái": linfo.get('status', 'Chờ phê duyệt')
+                    "Trạng thái": linfo.get('status', 'Không phê duyệt')
                 })
             
             if line_list:
@@ -242,12 +242,13 @@ elif authentication_status:
                 with st.form("new_line_form", clear_on_submit=True):
                     col1, col2 = st.columns(2)
                     with col1:
-                        new_lnumber = st.text_input("Số LINE (Tùy chọn):", placeholder="VD: 01, 02, L05...") # <--- THÊM NHẬP SỐ LINE
-                        new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung, Xưởng A...")
-                        new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A, Tầng 1...") 
+                        new_lnumber = st.text_input("Số LINE (Tùy chọn):", placeholder="VD: 01, 02...")
+                        new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung...")
+                        new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A...") 
                     with col2:
                         new_ldescription = st.text_input("Mô tả / Ghi chú:")
-                        new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Chờ phê duyệt"])
+                        # Đã sửa thành Đã phê duyệt / Không phê duyệt
+                        new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Không phê duyệt"])
                     
                     if st.form_submit_button("Tạo LINE"):
                         if new_lname.strip() == "":
@@ -256,7 +257,7 @@ elif authentication_status:
                             st.error("⚠️ Tên LINE này đã tồn tại!")
                         else:
                             credentials['lines'][new_lname] = {
-                                'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật", # <--- LƯU SỐ LINE
+                                'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật",
                                 'area': new_larea.strip() if new_larea.strip() != "" else "Chưa cập nhật",
                                 'description': new_ldescription.strip(),
                                 'status': new_lstatus
@@ -267,7 +268,7 @@ elif authentication_status:
                             st.rerun()
 
             # --- CHỈNH SỬA LINE ---
-            with st.expander("✏️ Chỉnh sửa LINE"):
+            with st.expander("✏️ Chỉnh sửa / Bỏ phê duyệt LINE"):
                 lines_keys = list(credentials.get('lines', {}).keys())
                 if not lines_keys:
                     st.info("Không có LINE nào để chỉnh sửa.")
@@ -276,13 +277,14 @@ elif authentication_status:
                     if edit_lname:
                         line_info = credentials['lines'][edit_lname]
                         with st.form("edit_line_form"):
-                            el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) # <--- SỬA SỐ LINE
+                            el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) 
                             el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
                             el_desc = st.text_input("Mô tả:", value=line_info.get('description', ''))
-                            el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Chờ phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
+                            # Admin có thể chọn "Không phê duyệt" ở đây để khóa chức năng của LINE này
+                            el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Không phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
                             
                             if st.form_submit_button("Cập nhật LINE"):
-                                credentials['lines'][edit_lname]['number'] = el_number.strip() # <--- CẬP NHẬT SỐ LINE
+                                credentials['lines'][edit_lname]['number'] = el_number.strip() 
                                 credentials['lines'][edit_lname]['area'] = el_area.strip()
                                 credentials['lines'][edit_lname]['description'] = el_desc.strip()
                                 credentials['lines'][edit_lname]['status'] = el_status
@@ -293,9 +295,9 @@ elif authentication_status:
                                 
             # --- PHÊ DUYỆT LINE ---
             with st.expander("✅ Phê duyệt LINE"):
-                pending_lines = [k for k, v in credentials.get('lines', {}).items() if v.get('status') == 'Chờ phê duyệt']
+                pending_lines = [k for k, v in credentials.get('lines', {}).items() if v.get('status') != 'Đã phê duyệt']
                 if not pending_lines:
-                    st.success("Tuyệt vời! Không có LINE nào đang chờ phê duyệt.")
+                    st.success("Tuyệt vời! Tất cả các LINE đều đang ở trạng thái Đã phê duyệt.")
                 else:
                     approve_lname = st.selectbox("Chọn LINE để phê duyệt:", pending_lines)
                     if st.button("Xác nhận Phê duyệt"):
@@ -328,7 +330,19 @@ elif authentication_status:
             st.warning("⚠️ Quản trị viên chưa cập nhật cơ sở dữ liệu nào lên hệ thống.")
 
     # ================= KHU VỰC HỎI ĐÁP AI (CHUNG) =================
-    if df is not None:
+    
+    # BƯỚC KIỂM TRA BẮT BUỘC: Nhân viên thuộc LINE "Không phê duyệt" sẽ bị cấm dùng AI
+    is_line_approved = True
+    if user_role != 'admin' and current_line not in ["Chưa cập nhật", "Tất cả"]:
+        line_data = credentials.get('lines', {}).get(current_line, {})
+        # Nếu Line tồn tại nhưng trạng thái không phải là Đã phê duyệt
+        if line_data and line_data.get('status') != 'Đã phê duyệt':
+            is_line_approved = False
+
+    # Xử lý khóa chức năng nếu chưa phê duyệt
+    if not is_line_approved:
+        st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt' (hoặc đã bị bỏ phê duyệt). Hệ thống tạm thời khóa chức năng truy xuất dữ liệu đối với LINE này!")
+    elif df is not None:
         st.subheader("📊 Xem trước dữ liệu:")
         st.dataframe(df.head(5))
 
