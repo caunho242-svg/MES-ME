@@ -99,6 +99,9 @@ elif authentication_status:
         
         # TAB 1: TẢI FILE
         with tab1:
+            if st.button("🏠 Trở lại trang chủ", key="home_tab1"):
+                st.rerun()
+                
             uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
             if uploaded_file is not None:
                 if uploaded_file.name.endswith('.csv'):
@@ -112,6 +115,9 @@ elif authentication_status:
 
         # TAB 2: QUẢN LÝ TÀI KHOẢN
         with tab2:
+            if st.button("🏠 Trở lại trang chủ", key="home_tab2"):
+                st.rerun()
+                
             st.subheader("📋 Danh sách tài khoản hiện có")
             user_list = []
             for uname, info in credentials['usernames'].items():
@@ -194,6 +200,9 @@ elif authentication_status:
 
         # TAB 3: QUẢN LÝ LINE
         with tab3:
+            if st.button("🏠 Trở lại trang chủ", key="home_tab3"):
+                st.rerun()
+                
             manager_options = ["Chưa phân công"]
             for u_name, u_info in credentials['usernames'].items():
                 manager_options.append(f"{u_name} ({u_info.get('name', '')})")
