@@ -5,20 +5,21 @@ from langchain_experimental.agents import create_pandas_dataframe_agent
 from langchain_openai import ChatOpenAI
 
 # -------------------------------------------------------------------
-# Mật khẩu admin123 và user123 đã được mã hóa bằng Hasher chuẩn
+# Tự động mã hóa mật khẩu bằng Hasher chuẩn của thư viện để tránh lỗi
+hashed_passwords = stauth.Hasher(['admin123', 'user123']).generate()
+
 credentials = {
     'usernames': {
         'admin': {
             'name': 'Quản trị viên',
-            'password': '$argon2id$v=19$m=65536,t=3,p=4$4d8WqB++6X5KxH0uDxg3/A$Xf14oW5wT3U99j+R8Apx/K4eQ7xV9a/kM5fA1X/c2b8'  # Pass: admin123
+            'password': hashed_passwords[0] # Tương ứng mật khẩu: admin123
         },
         'nhanvien1': {
             'name': 'Thành viên A',
-            'password': '$argon2id$v=19$m=65536,t=3,p=4$4d8WqB++6X5KxH0uDxg3/A$Xf14oW5wT3U99j+R8Apx/K4eQ7xV9a/kM5fA1X/c2b8'  # Pass: admin123
+            'password': hashed_passwords[1] # Tương ứng mật khẩu: user123
         }
     }
 }
-    credentials,
     'excel_ai_cookie',
     'auth_key_123456',
     cookie_expiry_days=1
