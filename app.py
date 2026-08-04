@@ -540,4 +540,4 @@ elif authentication_status:
                             st.success("✅ Kết quả phân tích từ AI:")
                             st.write(response["output"])
                         except Exception as e:
-                            st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")nh xử lý: {e}")
+                            st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")
