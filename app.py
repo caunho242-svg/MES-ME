@@ -452,7 +452,7 @@ elif authentication_status:
 
     if not is_line_approved:
         st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt'. Hệ thống tạm thời khóa chức năng AI đối với LINE này!")
-elif df is not None:
+    elif df is not None:
         st.subheader("📊 Cơ sở Dữ liệu & Tìm kiếm")
         
         # --- BỘ LỌC TÌM KIẾM VÀ TÌM KIẾM NÂNG CAO ---
