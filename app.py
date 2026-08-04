@@ -444,96 +444,100 @@ elif authentication_status:
             st.warning("⚠️ Quản trị viên chưa cập nhật cơ sở dữ liệu nào lên hệ thống.")
 
     # ================= KHU VỰC HỎI ĐÁP AI (CHUNG) =================
-    is_line_approved = True
-    if user_role != 'admin' and current_line not in ["Chưa cập nhật", "Tất cả"]:
-        line_data = credentials.get('lines', {}).get(current_line, {})
-        if line_data and line_data.get('status') != 'Đã phê duyệt':
-            is_line_approved = False
+    # Điều kiện để nhận biết người dùng đang ở Trang chủ (Tab Cập nhật dữ liệu hoặc giao diện mặc định)
+    is_on_home_page = (not menu_options) or (selected_tab == "📂 Cập nhật Dữ liệu")
 
-    if not is_line_approved:
-        st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt'. Hệ thống tạm thời khóa chức năng AI đối với LINE này!")
-    else:
-        # Nếu chưa có file dữ liệu, tạo một bảng rỗng để thanh tìm kiếm luôn hiển thị
-        if df is None:
-            df = pd.DataFrame(columns=["Chưa có dữ liệu"])
+    if is_on_home_page:
+        is_line_approved = True
+        if user_role != 'admin' and current_line not in ["Chưa cập nhật", "Tất cả"]:
+            line_data = credentials.get('lines', {}).get(current_line, {})
+            if line_data and line_data.get('status') != 'Đã phê duyệt':
+                is_line_approved = False
 
-        st.subheader("📊 Cơ sở Dữ liệu & Tìm kiếm")
-        
-        # --- BỘ LỌC TÌM KIẾM VÀ TÌM KIẾM NÂNG CAO ---
-        with st.expander("🔍 Tìm kiếm & Lọc dữ liệu nâng cao", expanded=True):
-            col_s1, col_s2 = st.columns([7, 3])
+        if not is_line_approved:
+            st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt'. Hệ thống tạm thời khóa chức năng AI đối với LINE này!")
+        else:
+            # Nếu chưa có file dữ liệu, tạo một bảng rỗng để thanh tìm kiếm luôn hiển thị
+            if df is None:
+                df = pd.DataFrame(columns=["Chưa có dữ liệu"])
+
+            st.subheader("📊 Cơ sở Dữ liệu & Tìm kiếm")
             
-            with col_s1:
-                search_kw = st.text_input("🔎 Tìm kiếm nhanh (từ khóa chung):", placeholder="Nhập từ khóa cần tìm...")
-            with col_s2:
-                enable_advanced = st.checkbox("⚙️ Bật Lọc nâng cao")
+            # --- BỘ LỌC TÌM KIẾM VÀ TÌM KIẾM NÂNG CAO ---
+            with st.expander("🔍 Tìm kiếm & Lọc dữ liệu nâng cao", expanded=True):
+                col_s1, col_s2 = st.columns([7, 3])
+                
+                with col_s1:
+                    search_kw = st.text_input("🔎 Tìm kiếm nhanh (từ khóa chung):", placeholder="Nhập từ khóa cần tìm...")
+                with col_s2:
+                    enable_advanced = st.checkbox("⚙️ Bật Lọc nâng cao")
+                
+                df_filtered = df.copy()
+                
+                # 1. Tìm kiếm nhanh trên toàn bộ các cột
+                if search_kw.strip() and not df_filtered.empty:
+                    mask = df_filtered.astype(str).apply(
+                        lambda row: row.str.contains(search_kw.strip(), case=False, na=False)
+                    ).any(axis=1)
+                    df_filtered = df_filtered[mask]
+                    
+                # 2. Tìm kiếm nâng cao theo cột cụ thể
+                if enable_advanced:
+                    st.markdown("---")
+                    st.markdown("##### 🎯 Điều kiện lọc theo cột:")
+                    cols = list(df.columns)
+                    
+                    col_f1, col_f2, col_f3 = st.columns(3)
+                    with col_f1:
+                        selected_col = st.selectbox("Chọn cột cần lọc:", cols)
+                    with col_f2:
+                        filter_type = st.selectbox("Kiểu lọc:", ["Chứa từ khóa", "Khớp chính xác", "Lớn hơn (>)", "Nhỏ hơn (<)"])
+                    with col_f3:
+                        filter_val = st.text_input("Giá trị lọc:", placeholder="Nhập giá trị...")
+                    
+                    if filter_val.strip() and not df_filtered.empty:
+                        val = filter_val.strip()
+                        try:
+                            if filter_type == "Chứa từ khóa":
+                                df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.contains(val, case=False, na=False)]
+                            elif filter_type == "Khớp chính xác":
+                                df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.lower() == val.lower()]
+                            elif filter_type == "Lớn hơn (>)":
+                                df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') > float(val)]
+                            elif filter_type == "Nhỏ hơn (<)":
+                                df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') < float(val)]
+                        except Exception as filter_err:
+                            st.warning(f"⚠️ Lỗi định dạng giá trị lọc: {filter_err}")
+
+            # Hiển thị số lượng kết quả lọc được
+            st.caption(f"📌 **Hiển thị:** {len(df_filtered)} / {len(df)} dòng dữ liệu")
             
-            df_filtered = df.copy()
-            
-            # 1. Tìm kiếm nhanh trên toàn bộ các cột
-            if search_kw.strip() and not df_filtered.empty:
-                mask = df_filtered.astype(str).apply(
-                    lambda row: row.str.contains(search_kw.strip(), case=False, na=False)
-                ).any(axis=1)
-                df_filtered = df_filtered[mask]
-                
-            # 2. Tìm kiếm nâng cao theo cột cụ thể
-            if enable_advanced:
-                st.markdown("---")
-                st.markdown("##### 🎯 Điều kiện lọc theo cột:")
-                cols = list(df.columns)
-                
-                col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1:
-                    selected_col = st.selectbox("Chọn cột cần lọc:", cols)
-                with col_f2:
-                    filter_type = st.selectbox("Kiểu lọc:", ["Chứa từ khóa", "Khớp chính xác", "Lớn hơn (>)", "Nhỏ hơn (<)"])
-                with col_f3:
-                    filter_val = st.text_input("Giá trị lọc:", placeholder="Nhập giá trị...")
-                
-                if filter_val.strip() and not df_filtered.empty:
-                    val = filter_val.strip()
-                    try:
-                        if filter_type == "Chứa từ khóa":
-                            df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.contains(val, case=False, na=False)]
-                        elif filter_type == "Khớp chính xác":
-                            df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.lower() == val.lower()]
-                        elif filter_type == "Lớn hơn (>)":
-                            df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') > float(val)]
-                        elif filter_type == "Nhỏ hơn (<)":
-                            df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') < float(val)]
-                    except Exception as filter_err:
-                        st.warning(f"⚠️ Lỗi định dạng giá trị lọc: {filter_err}")
+            # Bảng hiển thị dữ liệu sau khi tìm kiếm/lọc
+            st.dataframe(df_filtered, use_container_width=True, height=300)
 
-        # Hiển thị số lượng kết quả lọc được
-        st.caption(f"📌 **Hiển thị:** {len(df_filtered)} / {len(df)} dòng dữ liệu")
-        
-        # Bảng hiển thị dữ liệu sau khi tìm kiếm/lọc
-        st.dataframe(df_filtered, use_container_width=True, height=300)
+            # --- KHU VỰC HỎI ĐÁP BẰNG AI ---
+            st.markdown("---")
+            query = st.text_input("💬 Nhập câu hỏi/yêu cầu AI phân tích dữ liệu:")
 
-        # --- KHU VỰC HỎI ĐÁP BẰNG AI ---
-        st.markdown("---")
-        query = st.text_input("💬 Nhập câu hỏi/yêu cầu AI phân tích dữ liệu:")
-
-        if query:
-            if not openai_api_key:
-                st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái để tiếp tục!")
-            elif len(df) == 0:
-                # Báo lỗi nếu người dùng hỏi AI khi hệ thống chưa được upload file nào
-                st.warning("⚠️ Hệ thống hiện chưa có dữ liệu để AI phân tích. Quản trị viên cần tải file Excel/CSV lên trước!")
-            else:
-                with st.spinner("AI đang xử lý dữ liệu..."):
-                    try:
-                        llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
-                        # AI sẽ ưu tiên phân tích dữ liệu đã được lọc (df_filtered)
-                        agent = create_pandas_dataframe_agent(
-                            llm, 
-                            df_filtered if search_kw or enable_advanced else df, 
-                            verbose=True, 
-                            allow_dangerous_code=True
-                        )
-                        response = agent.invoke({"input": query})
-                        st.success("✅ Kết quả phân tích từ AI:")
-                        st.write(response["output"])
-                    except Exception as e:
-                        st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")
+            if query:
+                if not openai_api_key:
+                    st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái để tiếp tục!")
+                elif len(df) == 0 or (len(df) == 1 and "Chưa có dữ liệu" in df.columns):
+                    # Báo lỗi nếu người dùng hỏi AI khi hệ thống chưa được upload file nào
+                    st.warning("⚠️ Hệ thống hiện chưa có dữ liệu để AI phân tích. Quản trị viên cần tải file Excel/CSV lên trước!")
+                else:
+                    with st.spinner("AI đang xử lý dữ liệu..."):
+                        try:
+                            llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
+                            # AI sẽ ưu tiên phân tích dữ liệu đã được lọc (df_filtered)
+                            agent = create_pandas_dataframe_agent(
+                                llm, 
+                                df_filtered if search_kw or enable_advanced else df, 
+                                verbose=True, 
+                                allow_dangerous_code=True
+                            )
+                            response = agent.invoke({"input": query})
+                            st.success("✅ Kết quả phân tích từ AI:")
+                            st.write(response["output"])
+                        except Exception as e:
+                            st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")nh xử lý: {e}")
