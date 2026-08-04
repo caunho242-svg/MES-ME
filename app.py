@@ -110,10 +110,17 @@ elif authentication_status:
 
     # Xây dựng Menu Động dựa trên quyền hạn
     menu_options = []
-    if can_edit_data: menu_options.append("📂 Cập nhật Dữ liệu")
-    if can_edit_account: menu_options.append("👥 Quản lý Tài khoản")
-    if can_edit_line: menu_options.append("🏭 Quản lý LINE")
-
+    
+    # Bất kỳ ai có quyền xem (hoặc admin) đều thấy tab tổng hợp DATA này
+    if can_view:
+        menu_options.append("📊 DATA Tổng hợp")
+        
+    if can_edit_data:
+        menu_options.append("📂 Cập nhật Dữ liệu")
+    if can_edit_account:
+        menu_options.append("👥 Quản lý Tài khoản")
+    if can_edit_line:
+        menu_options.append("🏭 Quản lý LINE")
     # ================= KHU VỰC DÀNH CHO QUẢN LÝ TÙY THEO QUYỀN =================
     if menu_options:
         if "admin_menu" not in st.session_state or st.session_state.admin_menu not in menu_options:
@@ -437,6 +444,65 @@ elif authentication_status:
                                 if st.button("Xác nhận Xóa Máy", key=f"del_btn_{lname}"):
                                     del credentials['lines'][lname]['machines'][del_mac_num]
                                     save_users(credentials); st.success(f"✅ Đã xóa máy '{del_mac_num}'!"); time.sleep(1.5); st.rerun()
+        # TAB 4: DATA TỔNG HỢP TỪ CÁC LINE
+        elif selected_tab == "📊 DATA Tổng hợp":
+            st.subheader("📊 Dữ liệu Tổng hợp từ các Máy & LINE")
+            st.info("💡 Hệ thống tự động truy xuất dữ liệu từ các 'Đường dẫn' file mà bạn đã khai báo trong Quản lý LINE.")
+            
+            lines_data = credentials.get('lines', {})
+            approved_lines_data = {k: v for k, v in lines_data.items() if v.get('status') == 'Đã phê duyệt'}
+            
+            if not approved_lines_data:
+                st.warning("⚠️ Chưa có LINE nào được phê duyệt để thu thập dữ liệu.")
+            else:
+                if st.button("🔄 Làm mới dữ liệu", type="primary"):
+                    st.rerun()
+                    
+                for lname, linfo in approved_lines_data.items():
+                    st.markdown(f"### 🏭 LINE: {lname}")
+                    machines = linfo.get('machines', {})
+                    # Lọc ra các máy đang bật "Kích hoạt (Lấy dữ liệu)"
+                    active_machines = {k: v for k, v in machines.items() if v.get('active')}
+                    
+                    if not active_machines:
+                        st.caption(f"Không có máy nào đang được kích hoạt thu thập dữ liệu trong LINE {lname}.")
+                        st.markdown("---")
+                        continue
+                        
+                    for m_num, m_info in active_machines.items():
+                        m_name = m_info.get('name', 'Chưa có tên')
+                        m_path = m_info.get('path', '')
+                        m_format = m_info.get('format', 'CSV')
+                        
+                        with st.expander(f"🖥️ Máy: {m_name} (ID: {m_num}) | 📁 Định dạng: {m_format} | 📍 Đường dẫn: {m_path}"):
+                            if not m_path:
+                                st.warning("⚠️ Máy này chưa được cấu hình đường dẫn file dữ liệu.")
+                                continue
+                            
+                            if not os.path.exists(m_path):
+                                st.error(f"❌ Không tìm thấy file tại đường dẫn: `{m_path}`. Vui lòng kiểm tra lại thiết lập.")
+                                continue
+                                
+                            try:
+                                m_df = None
+                                # Xử lý đọc file theo định dạng đã khai báo
+                                if m_format == "CSV":
+                                    m_df = pd.read_csv(m_path)
+                                elif m_format == "Excel":
+                                    m_df = pd.read_excel(m_path)
+                                elif m_format == "JSON":
+                                    m_df = pd.read_json(m_path)
+                                elif m_format == "TXT":
+                                    m_df = pd.read_csv(m_path, sep=None, engine='python')
+                                else:
+                                    st.warning(f"⚠️ Định dạng '{m_format}' hiện chưa được hỗ trợ đọc tự động.")
+                                    
+                                if m_df is not None:
+                                    st.success(f"✅ Đã tải thành công {len(m_df)} dòng dữ liệu từ máy {m_name}.")
+                                    st.dataframe(m_df, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"❌ Xảy ra lỗi khi đọc file dữ liệu: {e}")
+                    st.markdown("---")
     else:
         # NẾU USER KHÔNG CÓ BẤT CỨ QUYỀN QUẢN LÝ NÀO
         st.info("👤 Giao diện Nhân viên: Bạn chỉ được cấp quyền tra cứu dữ liệu từ hệ thống.")
