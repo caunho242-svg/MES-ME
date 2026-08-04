@@ -121,6 +121,7 @@ elif authentication_status:
         menu_options.append("👥 Quản lý Tài khoản")
     if can_edit_line:
         menu_options.append("🏭 Quản lý LINE")
+        
     # ================= KHU VỰC DÀNH CHO QUẢN LÝ TÙY THEO QUYỀN =================
     if menu_options:
         if "admin_menu" not in st.session_state or st.session_state.admin_menu not in menu_options:
@@ -339,47 +340,47 @@ elif authentication_status:
                     if st.button("Xác nhận Xóa LINE"):
                         del credentials['lines'][del_lname]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
 
-      st.markdown("---")
-        st.subheader("🏭 Danh sách LINE & Thiết lập")
-        lines_data = credentials.get('lines', {})
-        if not lines_data:
-            st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
-        else:
-            for lname, linfo in lines_data.items():
-                num_macs = len(linfo.get('machines', {}))
-                status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
-                
-                with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
-                    st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
-
-                    line_machines = linfo.get('machines', {})
-                    edit_key = f"edit_mode_{lname}"
-                    if edit_key not in st.session_state:
-                        st.session_state[edit_key] = False
-
-                    if st.session_state[edit_key]:
-                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
-                    else:
-                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
-
-                    mac_list = []
-                    for m_num, m_info in line_machines.items():
-                        mac_list.append({
-                            "Số máy (Mã ID)": m_num,
-                            "Tên máy": m_info.get('name', ''),
-                            "Vị trí (Ô CSV)": m_info.get('position', ''),
-                            "Định dạng file": m_info.get('format', 'CSV'),
-                            "Đường dẫn gốc": m_info.get('path', ''),
-                            "File mẫu (Template)": m_info.get('template_path', ''),
-                            "Lấy dữ liệu": bool(m_info.get('active', True))
-                        })
+            st.markdown("---")
+            st.subheader("🏭 Danh sách LINE & Thiết lập")
+            lines_data = credentials.get('lines', {})
+            if not lines_data:
+                st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
+            else:
+                for lname, linfo in lines_data.items():
+                    num_macs = len(linfo.get('machines', {}))
+                    status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
                     
-                    df_mac = pd.DataFrame(mac_list)
-                    if df_mac.empty:
-                        df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
+                    with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
+                        st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
 
-                    if not st.session_state[edit_key]:
-                        st.dataframe(df_mac, hide_index=True, use_container_width=True)
+                        line_machines = linfo.get('machines', {})
+                        edit_key = f"edit_mode_{lname}"
+                        if edit_key not in st.session_state:
+                            st.session_state[edit_key] = False
+
+                        if st.session_state[edit_key]:
+                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
+                        else:
+                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
+
+                        mac_list = []
+                        for m_num, m_info in line_machines.items():
+                            mac_list.append({
+                                "Số máy (Mã ID)": m_num,
+                                "Tên máy": m_info.get('name', ''),
+                                "Vị trí (Ô CSV)": m_info.get('position', ''),
+                                "Định dạng file": m_info.get('format', 'CSV'),
+                                "Đường dẫn gốc": m_info.get('path', ''),
+                                "File mẫu (Template)": m_info.get('template_path', ''),
+                                "Lấy dữ liệu": bool(m_info.get('active', True))
+                            })
+                        
+                        df_mac = pd.DataFrame(mac_list)
+                        if df_mac.empty:
+                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
+
+                        if not st.session_state[edit_key]:
+                            st.dataframe(df_mac, hide_index=True, use_container_width=True)
                             if not df_mac.empty:
                                 if st.button(f"✏️ Chỉnh sửa bảng máy ({lname})", key=f"btn_edit_{lname}"):
                                     st.session_state[edit_key] = True; st.rerun()
@@ -406,13 +407,13 @@ elif authentication_status:
                                                 st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
                                                 has_err = True; break
                                             new_machines[m_num] = {
-                                    'name': m_name,
-                                    'position': safe_str(row.get("Vị trí (Ô CSV)", "")),
-                                    'format': safe_str(row.get("Định dạng file", "CSV")),
-                                    'path': safe_str(row.get("Đường dẫn gốc", "")),
-                                    'template_path': safe_str(row.get("File mẫu (Template)", "")), # <-- Thêm dòng này
-                                    'active': bool(row.get("Lấy dữ liệu", True))
-                                }
+                                                'name': m_name,
+                                                'position': safe_str(row.get("Vị trí (Ô CSV)", "")),
+                                                'format': safe_str(row.get("Định dạng file", "CSV")),
+                                                'path': safe_str(row.get("Đường dẫn gốc", "")),
+                                                'template_path': safe_str(row.get("File mẫu (Template)", "")),
+                                                'active': bool(row.get("Lấy dữ liệu", True))
+                                            }
                                         if not has_err:
                                             credentials['lines'][lname]['machines'] = new_machines
                                             save_users(credentials); st.success(f"✅ Đã lưu thay đổi LINE {lname}!")
@@ -431,10 +432,10 @@ elif authentication_status:
                                     mac_num = st.text_input("Số máy* (Mã định danh):", key=f"add_num_{lname}")
                                     mac_name = st.text_input("Tên máy*:", key=f"add_name_{lname}")
                                     mac_pos = st.text_input("Vị trí (Ô trong CSV):", key=f"add_pos_{lname}")
-                               with col_m2:
+                                with col_m2:
                                     mac_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "TXT", "JSON", "Khác"], key=f"add_fmt_{lname}")
                                     mac_path = st.text_input("Đường dẫn file gốc:", key=f"add_path_{lname}")
-                                    mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}") # <-- Form tải file mẫu
+                                    mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}")
                                     mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
                                     
                             if st.form_submit_button("Thêm Máy Mới"):
@@ -450,10 +451,10 @@ elif authentication_status:
                                         'position': mac_pos.strip(),
                                         'format': mac_format,
                                         'path': mac_path.strip(),
-                                        'template_path': mac_template.strip(), # <-- Lưu file mẫu
+                                        'template_path': mac_template.strip(),
                                         'active': mac_active
                                     }
-                                        save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
+                                    save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
 
                         with tab_del:
                             if not line_machines: st.info("Chưa có máy nào để xóa.")
@@ -462,6 +463,7 @@ elif authentication_status:
                                 if st.button("Xác nhận Xóa Máy", key=f"del_btn_{lname}"):
                                     del credentials['lines'][lname]['machines'][del_mac_num]
                                     save_users(credentials); st.success(f"✅ Đã xóa máy '{del_mac_num}'!"); time.sleep(1.5); st.rerun()
+
         # TAB 4: DATA TỔNG HỢP TỪ CÁC LINE
         elif selected_tab == "📊 DATA Tổng hợp":
             st.subheader("📊 Dữ liệu Tổng hợp từ các Máy & LINE")
@@ -539,6 +541,8 @@ elif authentication_status:
                                     
                                     st.success(f"✅ Đã tải thành công {len(m_df)} dòng dữ liệu từ máy {m_name}.")
                                     st.dataframe(m_df, use_container_width=True)
+                            except Exception as e:
+                                st.error(f"❌ Xảy ra lỗi khi đọc file dữ liệu: {e}")
     else:
         # NẾU USER KHÔNG CÓ BẤT CỨ QUYỀN QUẢN LÝ NÀO
         st.info("👤 Giao diện Nhân viên: Bạn chỉ được cấp quyền tra cứu dữ liệu từ hệ thống.")
