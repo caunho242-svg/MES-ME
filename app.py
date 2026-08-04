@@ -349,33 +349,34 @@ elif authentication_status:
                 for lname, linfo in lines_data.items():
                     num_macs = len(linfo.get('machines', {}))
                     status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
+                   with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
+                    st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
+
+                    line_machines = linfo.get('machines', {})
+                    edit_key = f"edit_mode_{lname}"
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = False
+
+                    if st.session_state[edit_key]:
+                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
+                    else:
+                        st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
+
+                    mac_list = []
+                    for m_num, m_info in line_machines.items():
+                        mac_list.append({
+                            "Số máy (Mã ID)": m_num,
+                            "Tên máy": m_info.get('name', ''),
+                            "Vị trí (Ô CSV)": m_info.get('position', ''),
+                            "Định dạng file": m_info.get('format', 'CSV'),
+                            "Đường dẫn gốc": m_info.get('path', ''),
+                            "File mẫu (Template)": m_info.get('template_path', ''),
+                            "Lấy dữ liệu": bool(m_info.get('active', True))
+                        })
                     
-                    with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
-                        st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
-                        
-                       line_machines = linfo.get('machines', {})
-                        edit_key = f"edit_mode_{lname}"
-                        if edit_key not in st.session_state:
-                            st.session_state[edit_key] = False
-
-                        if st.session_state[edit_key]:
-                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
-                        else:
-                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
-
-                        mac_list = []
-                        for m_num, m_info in line_machines.items():
-                            mac_list.append({
-                                "Số máy (Mã ID)": m_num,
-                                "Tên máy": m_info.get('name', ''),
-                                "Vị trí (Ô CSV)": m_info.get('position', ''),
-                                "Định dạng file": m_info.get('format', 'CSV'),
-                                "Đường dẫn gốc": m_info.get('path', ''),
-                                "File mẫu (Template)": m_info.get('template_path', ''),
-                                "Lấy dữ liệu": bool(m_info.get('active', True))
-                            })
-                        
-                        df_mac = pd.DataFrame(mac_list)
+                    df_mac = pd.DataFrame(mac_list)
+                    if df_mac.empty:
+                        df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
                         if df_mac.empty:
                             df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
                             df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
