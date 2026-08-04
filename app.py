@@ -360,17 +360,20 @@ elif authentication_status:
                         if st.session_state[edit_key]: st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
                         else: st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
                         
-                        mac_list = []
+                       mac_list = []
                         for m_num, m_info in line_machines.items():
                             mac_list.append({
-                                "Số máy (Mã ID)": m_num, "Tên máy": m_info.get('name', ''),
-                                "Vị trí (Ô CSV)": m_info.get('position', ''), "Định dạng file": m_info.get('format', 'CSV'),
-                                "Đường dẫn": m_info.get('path', ''), "Lấy dữ liệu": bool(m_info.get('active', True))
+                                "Số máy (Mã ID)": m_num,
+                                "Tên máy": m_info.get('name', ''),
+                                "Vị trí (Ô CSV)": m_info.get('position', ''),
+                                "Định dạng file": m_info.get('format', 'CSV'),
+                                "Đường dẫn gốc": m_info.get('path', ''),
+                                "File mẫu (Template)": m_info.get('template_path', ''),  # <-- Thêm dòng này
+                                "Lấy dữ liệu": bool(m_info.get('active', True))
                             })
-                        
                         df_mac = pd.DataFrame(mac_list)
                         if df_mac.empty:
-                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn", "Lấy dữ liệu"])
+                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
 
                         if not st.session_state[edit_key]:
                             st.dataframe(df_mac, hide_index=True, use_container_width=True)
@@ -400,9 +403,13 @@ elif authentication_status:
                                                 st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
                                                 has_err = True; break
                                             new_machines[m_num] = {
-                                                'name': m_name, 'position': safe_str(row["Vị trí (Ô CSV)"]),
-                                                'format': safe_str(row["Định dạng file"]), 'path': safe_str(row["Đường dẫn"]), 'active': bool(row["Lấy dữ liệu"])
-                                            }
+                                    'name': m_name,
+                                    'position': safe_str(row.get("Vị trí (Ô CSV)", "")),
+                                    'format': safe_str(row.get("Định dạng file", "CSV")),
+                                    'path': safe_str(row.get("Đường dẫn gốc", "")),
+                                    'template_path': safe_str(row.get("File mẫu (Template)", "")), # <-- Thêm dòng này
+                                    'active': bool(row.get("Lấy dữ liệu", True))
+                                }
                                         if not has_err:
                                             credentials['lines'][lname]['machines'] = new_machines
                                             save_users(credentials); st.success(f"✅ Đã lưu thay đổi LINE {lname}!")
@@ -421,20 +428,28 @@ elif authentication_status:
                                     mac_num = st.text_input("Số máy* (Mã định danh):", key=f"add_num_{lname}")
                                     mac_name = st.text_input("Tên máy*:", key=f"add_name_{lname}")
                                     mac_pos = st.text_input("Vị trí (Ô trong CSV):", key=f"add_pos_{lname}")
-                                with col_m2:
+                               with col_m2:
                                     mac_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "TXT", "JSON", "Khác"], key=f"add_fmt_{lname}")
-                                    mac_path = st.text_input("Đường dẫn / Link Folder:", key=f"add_path_{lname}")
-                                mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
-                                
-                                if st.form_submit_button("Thêm Máy Mới"):
-                                    if mac_num.strip() == "" or mac_name.strip() == "": st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
-                                    elif mac_num.strip() in line_machines: st.error("⚠️ Số máy này đã tồn tại!")
-                                    else:
-                                        if 'machines' not in credentials['lines'][lname]: credentials['lines'][lname]['machines'] = {}
-                                        credentials['lines'][lname]['machines'][mac_num.strip()] = {
-                                            'name': mac_name.strip(), 'position': mac_pos.strip(), 
-                                            'format': mac_format, 'path': mac_path.strip(), 'active': mac_active
-                                        }
+                                    mac_path = st.text_input("Đường dẫn file gốc:", key=f"add_path_{lname}")
+                                    mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}") # <-- Form tải file mẫu
+                                    mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
+                                    
+                            if st.form_submit_button("Thêm Máy Mới"):
+                                if mac_num.strip() == "" or mac_name.strip() == "":
+                                    st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
+                                elif mac_num.strip() in line_machines:
+                                    st.error("⚠️ Số máy này đã tồn tại!")
+                                else:
+                                    if 'machines' not in credentials['lines'][lname]:
+                                        credentials['lines'][lname]['machines'] = {}
+                                    credentials['lines'][lname]['machines'][mac_num.strip()] = {
+                                        'name': mac_name.strip(),
+                                        'position': mac_pos.strip(),
+                                        'format': mac_format,
+                                        'path': mac_path.strip(),
+                                        'template_path': mac_template.strip(), # <-- Lưu file mẫu
+                                        'active': mac_active
+                                    }
                                         save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
 
                         with tab_del:
@@ -498,11 +513,29 @@ elif authentication_status:
                                     st.warning(f"⚠️ Định dạng '{m_format}' hiện chưa được hỗ trợ đọc tự động.")
                                     
                                 if m_df is not None:
+                                    # ====================================================
+                                    # CHUẨN HÓA DỮ LIỆU THEO FILE MẪU (EXCEL TEMPLATE)
+                                    # ====================================================
+                                    m_template_path = m_info.get('template_path', '')
+                                    if m_template_path and str(m_template_path).strip() != "":
+                                        if os.path.exists(m_template_path):
+                                            try:
+                                                # Đọc file mẫu chỉ để lấy tên cột (không lấy dữ liệu)
+                                                tpl_df = pd.read_excel(m_template_path, nrows=0)
+                                                standard_cols = tpl_df.columns.tolist()
+                                                
+                                                # Ép dữ liệu gốc (m_df) theo đúng các cột của file mẫu
+                                                m_df = m_df.reindex(columns=standard_cols)
+                                                
+                                                st.info(f"✨ **Dữ liệu đã được chuẩn hóa theo Form mẫu ({len(standard_cols)} cột).**")
+                                            except Exception as tpl_e:
+                                                st.warning(f"⚠️ Không thể đọc File mẫu '{m_template_path}': {tpl_e}")
+                                        else:
+                                            st.warning(f"⚠️ Không tìm thấy File mẫu tại: `{m_template_path}`. Dữ liệu hiển thị nguyên bản.")
+                                    # ====================================================
+                                    
                                     st.success(f"✅ Đã tải thành công {len(m_df)} dòng dữ liệu từ máy {m_name}.")
                                     st.dataframe(m_df, use_container_width=True)
-                            except Exception as e:
-                                st.error(f"❌ Xảy ra lỗi khi đọc file dữ liệu: {e}")
-                    st.markdown("---")
     else:
         # NẾU USER KHÔNG CÓ BẤT CỨ QUYỀN QUẢN LÝ NÀO
         st.info("👤 Giao diện Nhân viên: Bạn chỉ được cấp quyền tra cứu dữ liệu từ hệ thống.")
