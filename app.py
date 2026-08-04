@@ -438,23 +438,24 @@ elif authentication_status:
                                     mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}")
                                     mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
                                     
-                            if st.form_submit_button("Thêm Máy Mới"):
-                                if mac_num.strip() == "" or mac_name.strip() == "":
-                                    st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
-                                elif mac_num.strip() in line_machines:
-                                    st.error("⚠️ Số máy này đã tồn tại!")
-                                else:
-                                    if 'machines' not in credentials['lines'][lname]:
-                                        credentials['lines'][lname]['machines'] = {}
-                                    credentials['lines'][lname]['machines'][mac_num.strip()] = {
-                                        'name': mac_name.strip(),
-                                        'position': mac_pos.strip(),
-                                        'format': mac_format,
-                                        'path': mac_path.strip(),
-                                        'template_path': mac_template.strip(),
-                                        'active': mac_active
-                                    }
-                                    save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
+                                # Lỗi được sửa ở đây: Lùi st.form_submit_button vào trong st.form
+                                if st.form_submit_button("Thêm Máy Mới"):
+                                    if mac_num.strip() == "" or mac_name.strip() == "":
+                                        st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
+                                    elif mac_num.strip() in line_machines:
+                                        st.error("⚠️ Số máy này đã tồn tại!")
+                                    else:
+                                        if 'machines' not in credentials['lines'][lname]:
+                                            credentials['lines'][lname]['machines'] = {}
+                                        credentials['lines'][lname]['machines'][mac_num.strip()] = {
+                                            'name': mac_name.strip(),
+                                            'position': mac_pos.strip(),
+                                            'format': mac_format,
+                                            'path': mac_path.strip(),
+                                            'template_path': mac_template.strip(),
+                                            'active': mac_active
+                                        }
+                                        save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
 
                         with tab_del:
                             if not line_machines: st.info("Chưa có máy nào để xóa.")
