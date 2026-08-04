@@ -339,17 +339,17 @@ elif authentication_status:
                     if st.button("Xác nhận Xóa LINE"):
                         del credentials['lines'][del_lname]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
 
-            st.markdown("---")
-            st.subheader("🏭 Danh sách LINE & Thiết lập")
-            
-            lines_data = credentials.get('lines', {})
-            if not lines_data:
-                st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
-            else:
-                for lname, linfo in lines_data.items():
-                    num_macs = len(linfo.get('machines', {}))
-                    status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
-                   with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
+      st.markdown("---")
+        st.subheader("🏭 Danh sách LINE & Thiết lập")
+        lines_data = credentials.get('lines', {})
+        if not lines_data:
+            st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
+        else:
+            for lname, linfo in lines_data.items():
+                num_macs = len(linfo.get('machines', {}))
+                status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
+                
+                with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
                     st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
 
                     line_machines = linfo.get('machines', {})
@@ -377,12 +377,9 @@ elif authentication_status:
                     df_mac = pd.DataFrame(mac_list)
                     if df_mac.empty:
                         df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
-                        if df_mac.empty:
-                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
-                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
 
-                        if not st.session_state[edit_key]:
-                            st.dataframe(df_mac, hide_index=True, use_container_width=True)
+                    if not st.session_state[edit_key]:
+                        st.dataframe(df_mac, hide_index=True, use_container_width=True)
                             if not df_mac.empty:
                                 if st.button(f"✏️ Chỉnh sửa bảng máy ({lname})", key=f"btn_edit_{lname}"):
                                     st.session_state[edit_key] = True; st.rerun()
