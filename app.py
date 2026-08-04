@@ -438,7 +438,6 @@ elif authentication_status:
                                     mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}")
                                     mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
                                     
-                                # Lỗi được sửa ở đây: Lùi st.form_submit_button vào trong st.form
                                 if st.form_submit_button("Thêm Máy Mới"):
                                     if mac_num.strip() == "" or mac_name.strip() == "":
                                         st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
@@ -568,7 +567,7 @@ elif authentication_status:
             if df is None:
                 df = pd.DataFrame(columns=["Chưa có dữ liệu"])
 
-            st.subheader("📊 Cơ sở Dữ liệu & Tìm kiếm")
+            st.subheader("📊 Cơ sở Dữ liệu, Phân tích & Báo cáo")
             
             # --- BỘ LỌC TÌM KIẾM VÀ TÌM KIẾM NÂNG CAO ---
             with st.expander("🔍 Tìm kiếm & Lọc dữ liệu nâng cao", expanded=True):
@@ -616,35 +615,55 @@ elif authentication_status:
                         except Exception as filter_err:
                             st.warning(f"⚠️ Lỗi định dạng giá trị lọc: {filter_err}")
 
-            # Hiển thị số lượng kết quả lọc được
-            st.caption(f"📌 **Hiển thị:** {len(df_filtered)} / {len(df)} dòng dữ liệu")
+            # ================= TẠO TABS CHO DỮ LIỆU, AI VÀ BÁO CÁO =================
+            tab_data, tab_ai, tab_report = st.tabs(["🗄️ Dữ liệu đã lọc", "🤖 Trợ lý AI Phân tích", "📥 Báo cáo & Xuất file"])
             
-            # Bảng hiển thị dữ liệu sau khi tìm kiếm/lọc
-            st.dataframe(df_filtered, use_container_width=True, height=300)
+            with tab_data:
+                # Hiển thị số lượng kết quả lọc được
+                st.caption(f"📌 **Hiển thị:** {len(df_filtered)} / {len(df)} dòng dữ liệu")
+                # Bảng hiển thị dữ liệu sau khi tìm kiếm/lọc
+                st.dataframe(df_filtered, use_container_width=True, height=400)
 
-            # --- KHU VỰC HỎI ĐÁP BẰNG AI ---
-            st.markdown("---")
-            query = st.text_input("💬 Nhập câu hỏi/yêu cầu AI phân tích dữ liệu:")
+            with tab_ai:
+                st.markdown("### 🤖 Trợ lý AI")
+                st.info("💡 Trợ lý AI sẽ tập trung phân tích chính xác những dòng dữ liệu bạn đã lọc ở trên.")
+                query = st.text_input("💬 Nhập câu hỏi/yêu cầu AI phân tích dữ liệu:")
 
-            if query:
-                if not openai_api_key:
-                    st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái để tiếp tục!")
-                elif len(df) == 0 or (len(df) == 1 and "Chưa có dữ liệu" in df.columns):
-                    # Báo lỗi nếu người dùng hỏi AI khi hệ thống chưa được upload file nào
-                    st.warning("⚠️ Hệ thống hiện chưa có dữ liệu để AI phân tích. Quản trị viên cần tải file Excel/CSV lên trước!")
+                if query:
+                    if not openai_api_key:
+                        st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái để tiếp tục!")
+                    elif len(df) == 0 or (len(df) == 1 and "Chưa có dữ liệu" in df.columns):
+                        st.warning("⚠️ Hệ thống hiện chưa có dữ liệu để AI phân tích. Quản trị viên cần tải file Excel/CSV lên trước!")
+                    else:
+                        with st.spinner("AI đang xử lý dữ liệu..."):
+                            try:
+                                llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
+                                agent = create_pandas_dataframe_agent(
+                                    llm, 
+                                    df_filtered if search_kw or enable_advanced else df, 
+                                    verbose=True, 
+                                    allow_dangerous_code=True
+                                )
+                                response = agent.invoke({"input": query})
+                                st.success("✅ Kết quả phân tích từ AI:")
+                                st.write(response["output"])
+                            except Exception as e:
+                                st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")
+                                
+            with tab_report:
+                st.markdown("### 📥 Xuất Dữ Liệu Báo Cáo")
+                st.info("Hệ thống sẽ xuất bảng dữ liệu đã được lọc (hoặc toàn bộ nếu chưa lọc) ra file CSV chuẩn, bạn có thể mở bằng Excel.")
+                
+                if df_filtered.empty or (len(df_filtered) == 1 and "Chưa có dữ liệu" in df_filtered.columns):
+                    st.warning("⚠️ Không có dữ liệu để xuất báo cáo.")
                 else:
-                    with st.spinner("AI đang xử lý dữ liệu..."):
-                        try:
-                            llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
-                            # AI sẽ ưu tiên phân tích dữ liệu đã được lọc (df_filtered)
-                            agent = create_pandas_dataframe_agent(
-                                llm, 
-                                df_filtered if search_kw or enable_advanced else df, 
-                                verbose=True, 
-                                allow_dangerous_code=True
-                            )
-                            response = agent.invoke({"input": query})
-                            st.success("✅ Kết quả phân tích từ AI:")
-                            st.write(response["output"])
-                        except Exception as e:
-                            st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")
+                    # Chuyển DataFrame thành dạng CSV hỗ trợ tiếng Việt (utf-8-sig)
+                    csv_data = df_filtered.to_csv(index=False).encode('utf-8-sig')
+                    
+                    st.download_button(
+                        label="📥 Tải xuống Báo Cáo (Excel / CSV)",
+                        data=csv_data,
+                        file_name="Bao_Cao_Du_Lieu.csv",
+                        mime="text/csv",
+                        type="primary"
+                    )
