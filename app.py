@@ -146,42 +146,72 @@ elif authentication_status:
         st.markdown("---")
         
         # ---------------------------------------------------------
-        # TAB 1: DASHBOARD TỔNG QUAN
+        # TAB 1: DASHBOARD TỔNG QUAN (ĐÃ ĐƯỢC NÂNG CẤP)
         # ---------------------------------------------------------
         if selected_tab == "📈 Dashboard Tổng Quan":
             st.subheader("📈 Dashboard Sản Xuất Tổng Quan")
             
             if df is None or df.empty:
-                st.info("💡 Chưa có dữ liệu để hiển thị Dashboard. Vui lòng cập nhật dữ liệu.")
+                st.info("💡 Chưa có dữ liệu để hiển thị Dashboard. Vui lòng vào tab '📂 Cập nhật Dữ liệu' để tải file lên.")
             else:
-                col1, col2, col3, col4 = st.columns(4)
+                # 1. TÍNH TOÁN CÁC CHỈ SỐ
                 total_records = len(df)
                 
-                ng_count = 0
+                # Tìm cột trạng thái để đếm NG/OK
+                status_col = None
                 for col in df.columns:
-                    if "status" in col.lower() or "kết quả" in col.lower() or "đánh giá" in col.lower():
-                        ng_count = len(df[df[col].astype(str).str.upper().isin(["NG", "FAIL", "LỖI"])])
+                    if any(kw in str(col).lower() for kw in ["status", "kết quả", "đánh giá", "trạng thái", "result"]):
+                        status_col = col
                         break
-                        
+                
+                if status_col:
+                    ng_count = len(df[df[status_col].astype(str).str.upper().isin(["NG", "FAIL", "LỖI", "REJECT"])])
+                else:
+                    ng_count = 0
+                    
                 ok_count = total_records - ng_count
                 ng_rate = round((ng_count / total_records) * 100, 2) if total_records > 0 else 0
 
-                col1.metric(label="📦 Tổng Sản Lượng", value=f"{total_records:,}")
-                col2.metric(label="✅ Sản Phẩm OK", value=f"{ok_count:,}")
-                col3.metric(label="❌ Sản Phẩm NG (Lỗi)", value=f"{ng_count:,}")
+                # 2. HIỂN THỊ METRICS (Thẻ KPI)
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric(label="📦 Tổng Sản Lượng", value=f"{total_records:,} SP")
+                col2.metric(label="✅ Sản Phẩm OK", value=f"{ok_count:,} SP")
+                col3.metric(label="❌ Sản Phẩm NG (Lỗi)", value=f"{ng_count:,} SP")
                 col4.metric(label="📉 Tỉ Lệ Lỗi (Defect Rate)", value=f"{ng_rate}%")
                 
                 st.markdown("---")
-                col_chart1, col_chart2 = st.columns(2)
                 
-                with col_chart1:
-                    st.markdown("**📊 Biểu đồ Sản Lượng (Hiển thị 50 dòng gần nhất)**")
-                    chart_data = df.tail(50).copy()
-                    st.line_chart(chart_data.select_dtypes(include='number'))
-                    
-                with col_chart2:
-                    st.markdown("**📋 Xem trước dữ liệu (Top 10)**")
-                    st.dataframe(df.head(10), use_container_width=True)
+                # 3. HIỂN THỊ BIỂU ĐỒ TRỰC QUAN
+                chart_col1, chart_col2 = st.columns([1, 2])
+                
+                with chart_col1:
+                    st.markdown("##### 📊 Tỉ lệ Chất lượng (OK vs NG)")
+                    quality_df = pd.DataFrame({
+                        "Trạng thái": ["OK", "NG"],
+                        "Số lượng": [ok_count, ng_count]
+                    }).set_index("Trạng thái")
+                    st.bar_chart(quality_df)
+
+                with chart_col2:
+                    st.markdown("##### 📈 Biểu đồ Xu hướng (Các thông số kỹ thuật)")
+                    # Lấy các cột dữ liệu số để vẽ biểu đồ đường
+                    numeric_df = df.select_dtypes(include='number')
+                    if not numeric_df.empty:
+                        # Hiển thị 100 bản ghi gần nhất để tránh lag
+                        st.line_chart(numeric_df.tail(100))
+                    else:
+                        st.info("Không có cột dữ liệu dạng số (Ví dụ: Nhiệt độ, Kích thước...) để vẽ biểu đồ.")
+
+                st.markdown("---")
+                
+                # 4. BẢNG DỮ LIỆU ĐƯỢC FORMAT LẠI (Sắp xếp mới nhất lên đầu)
+                st.markdown("##### 📋 Bảng Dữ Liệu Sản Xuất Mới Nhất")
+                st.caption("Hiển thị 100 dòng cập nhật gần nhất (Dòng mới nhất xếp trên cùng).")
+                st.dataframe(
+                    df.tail(100).iloc[::-1], # Đảo ngược thứ tự để Data mới nhất lên đầu
+                    use_container_width=True,
+                    height=300
+                )
 
         # ---------------------------------------------------------
         # TAB 2: TRA CỨU, BÁO CÁO & AI
