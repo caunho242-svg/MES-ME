@@ -1,16 +1,15 @@
 import streamlit as st
 import pandas as pd
 import streamlit_authenticator as stauth
-from langchain_experimental.agents import create_pandas_dataframe_agent
-from langchain_openai import ChatOpenAI
 import os
 import json
 import time
 import io
 from pathlib import Path
+import streamlit.components.v1 as components
 
 # -------------------------------------------------------------------
-# 0. THIẾT LẬP BẢO MẬT HỆ THỐNG
+# 0. THIẾT LẬP HỆ THỐNG VÀ BẢO MẬT
 # -------------------------------------------------------------------
 ALLOWED_DATA_DIR = Path("./Data_Server").resolve()
 ALLOWED_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -20,11 +19,6 @@ try:
 except (KeyError, FileNotFoundError):
     COOKIE_KEY = "fallback_unsafe_key_change_me_in_production"
 
-ENV_API_KEY = st.secrets.get("OPENAI_API_KEY", "")
-
-# -------------------------------------------------------------------
-# 1. HỆ THỐNG QUẢN LÝ DỮ LIỆU TÀI KHOẢN VÀ LINE (JSON)
-# -------------------------------------------------------------------
 USER_FILE = "users.json"
 
 def load_users():
@@ -54,12 +48,11 @@ def save_users(creds):
         json.dump(creds, f, ensure_ascii=False, indent=4)
 
 # -------------------------------------------------------------------
-# 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
+# 1. GIAO DIỆN ĐĂNG NHẬP
 # -------------------------------------------------------------------
 st.set_page_config(page_title="MES Dashboard & AI", layout="wide", page_icon="🏭")
 
 credentials = load_users()
-
 authenticator = stauth.Authenticate(
     credentials, 'mes_secure_cookie', COOKIE_KEY, cookie_expiry_days=1
 )
@@ -73,11 +66,8 @@ username = st.session_state.get('username')
 if authentication_status == False:
     st.error('⛔ Tài khoản hoặc mật khẩu không chính xác!')
 elif authentication_status == None:
-    st.warning('🔐 Vui lòng nhập thông tin để truy cập hệ thống MES.')
+    st.warning('🔐 Vui lòng nhập thông tin tài khoản để truy cập hệ thống MES.')
 elif authentication_status:
-    # -------------------------------------------------------------------
-    # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
-    # -------------------------------------------------------------------
     authenticator.logout('Đăng xuất', 'sidebar')
     
     current_user_info = credentials['usernames'].get(username, {})
@@ -85,15 +75,9 @@ elif authentication_status:
     current_department = current_user_info.get('department', 'Chưa rõ')
     current_line = current_user_info.get('line', 'Chưa rõ')
     
-    st.title(f"🏭 Hệ Thống MES & Trợ Lý AI")
+    st.title(f"🏭 Hệ Thống MES & Quản Trị Sản Xuất")
     st.caption(f"👤 Tên: **{name}** | Vị trí: **{current_position}** | Phòng ban: **{current_department}** | Phụ trách: **{current_line}**")
     st.markdown("---")
-
-    openai_api_key = ENV_API_KEY
-    if not openai_api_key:
-        with st.sidebar:
-            st.warning("⚠️ Cấu hình API Key trên Streamlit Secrets để ẩn khung nhập này.")
-            openai_api_key = st.text_input("🔑 Nhập OpenAI API Key:", type="password")
 
     df = None 
     if os.path.exists("data_server.csv"):
@@ -114,7 +98,7 @@ elif authentication_status:
     can_edit_line = user_perms.get('edit_line', False) or user_role == 'admin'
 
     menu_options = []
-    if can_view: menu_options.extend(["📈 Dashboard", "🔍 Tra cứu & Báo cáo", "🖨️ In Tem", "📊 DATA Máy Móc"])
+    if can_view: menu_options.extend(["📈 Dashboard", "📊 Báo Cáo Downtime (HTML)", "🔍 Tra cứu & Dữ liệu", "🖨️ In Tem"])
     if can_edit_data: menu_options.append("📂 Cập nhật File")
     if can_edit_account: menu_options.append("👥 Quản lý Users")
     if can_edit_line: menu_options.append("🏭 Quản lý LINE")
@@ -127,15 +111,15 @@ elif authentication_status:
         st.markdown("---")
         
         # ---------------------------------------------------------
-        # TAB 1: DASHBOARD
+        # TAB 1: DASHBOARD MẶC ĐỊNH
         # ---------------------------------------------------------
         if selected_tab == "📈 Dashboard":
             st.subheader("📈 Dashboard Sản Xuất Tổng Quan")
             if df is None or df.empty:
-                st.info("💡 Chưa có dữ liệu hoặc file dữ liệu trống. Vui lòng vào tab '📂 Cập nhật File' để tải lên file mới.")
+                st.info("💡 Chưa có dữ liệu. Vui lòng vào tab '📂 Cập nhật File' để tải lên file dữ liệu.")
             else:
                 total_records = len(df)
-                status_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ["status", "kết quả", "đánh giá", "trạng thái", "result"])), None)
+                status_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ["status", "kết quả", "trạng thái", "result"])), None)
                 ng_count = len(df[df[status_col].astype(str).str.upper().isin(["NG", "FAIL", "LỖI", "REJECT"])]) if status_col else 0
                 ok_count = total_records - ng_count
                 ng_rate = round((ng_count / total_records) * 100, 2) if total_records > 0 else 0
@@ -146,171 +130,97 @@ elif authentication_status:
                 c3.metric("❌ Hàng NG", f"{ng_count:,} SP")
                 c4.metric("📉 Tỉ Lệ Lỗi", f"{ng_rate}%")
                 st.markdown("---")
-                
-                ch1, ch2 = st.columns([1, 2])
-                with ch1:
-                    st.markdown("##### 📊 Tỉ lệ Chất lượng")
-                    st.bar_chart(pd.DataFrame({"Trạng thái": ["OK", "NG"], "Số lượng": [ok_count, ng_count]}).set_index("Trạng thái"))
-                with ch2:
-                    st.markdown("##### 📈 Biểu đồ Xu hướng (100 SP cuối)")
-                    num_df = df.select_dtypes(include='number')
-                    if not num_df.empty: st.line_chart(num_df.tail(100))
-                    else: st.info("Không có dữ liệu dạng số.")
-                
-                st.markdown("##### 📋 Dữ liệu Gần Nhất (Top 100)")
-                st.dataframe(df.tail(100).iloc[::-1], use_container_width=True, height=300)
+                st.dataframe(df.tail(100).iloc[::-1], use_container_width=True, height=400)
 
         # ---------------------------------------------------------
-        # TAB 2: TRA CỨU, BÁO CÁO & AI
+        # TAB 2: GIAO DIỆN HTML QUẢN LÝ DOWNTIME (CHUẨN ẢNH MẪU)
         # ---------------------------------------------------------
-        elif selected_tab == "🔍 Tra cứu & Báo cáo":
-            st.subheader("🔍 Tra cứu & Phân tích AI")
-            if df is None: df = pd.DataFrame(columns=["Chưa có dữ liệu"])
-
-            with st.expander("🎯 Bộ Lọc Dữ Liệu", expanded=True):
-                cs1, cs2, cs3, cs4 = st.columns(4)
-                with cs1: s_bc = st.text_input("🏷️ Barcode:")
-                with cs2: s_lot = st.text_input("📦 Lot Number:")
-                with cs3: s_mod = st.text_input("💻 Model:")
-                with cs4: search_kw = st.text_input("🔎 Tự do:")
-
-                df_filtered = df.copy()
-                def filt(d, kw):
-                    return d[d.astype(str).apply(lambda r: r.str.contains(kw.strip(), case=False, na=False)).any(axis=1)] if kw.strip() else d
-
-                df_filtered = filt(df_filtered, s_bc)
-                df_filtered = filt(df_filtered, s_lot)
-                df_filtered = filt(df_filtered, s_mod)
-                df_filtered = filt(df_filtered, search_kw)
-
-            tb_data, tb_ai, tb_rep = st.tabs(["🗄️ Bảng Dữ Liệu", "🤖 AI Phân Tích", "📥 Báo Cáo (Xuất File)"])
-            with tb_data:
-                st.caption(f"📌 Hiển thị: {len(df_filtered)} / {len(df)} dòng")
-                st.dataframe(df_filtered, use_container_width=True, height=400)
+        elif selected_tab == "📊 Báo Cáo Downtime (HTML)":
+            st.subheader("📊 Giao Diện Phân Tích Downtime & Sức Khỏe Thiết Bị")
             
-            with tb_ai:
-                query = st.text_input("💬 Nhập câu hỏi cho AI (VD: Tính tổng lỗi, nguyên nhân lỗi cao nhất?):")
-                if query:
-                    if not openai_api_key: st.error("⚠️ Hệ thống chưa được cấu hình OpenAI API Key!")
-                    elif len(df_filtered) == 0: st.warning("⚠️ Bảng dữ liệu trống.")
-                    else:
-                        with st.spinner("Đang tính toán..."):
-                            try:
-                                llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
-                                agent = create_pandas_dataframe_agent(llm, df_filtered, verbose=True, allow_dangerous_code=False)
-                                response = agent.invoke({"input": query})
-                                st.success("✅ Kết quả:")
-                                st.write(response["output"])
-                            except Exception:
-                                st.error("❌ Lỗi AI. Vui lòng thử lại câu lệnh khác.")
-            with tb_rep:
-                if not df_filtered.empty:
-                    out = io.BytesIO()
-                    with pd.ExcelWriter(out, engine='xlsxwriter') as w: df_filtered.to_excel(w, index=False, sheet_name='MES')
-                    st.download_button("📥 Tải File Excel (.xlsx)", data=out.getvalue(), file_name="Bao_Cao.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary")
+            # Kiểm tra và render file HTML giao diện quản lý
+            html_path = Path("dashboard.html")
+            if html_path.exists():
+                components.html(html_path.read_text(encoding="utf-8"), height=950, scrolling=True)
+            else:
+                st.warning("⚠️ Chưa tìm thấy file `dashboard.html` trên hệ thống. Đang hiển thị giao diện mẫu tích hợp sẵn:")
+                
+                # HTML dự phòng hiển thị trực tiếp nếu chưa tạo file
+                embedded_html = """
+                <div style="background: #f8fafc; padding: 20px; font-family: sans-serif; border-radius: 8px;">
+                    <div style="background: #b91c1c; color: white; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 5px 0; font-size: 14px;">🚨 CẦN LÀM GÌ TRONG PHẠM VI ĐANG XEM</h3>
+                        <p style="margin: 0; font-size: 13px;">Chưa xác định downtime lớn nhất (2.650 phút) -> Ưu tiên xử lý 5-Why ngay tại trạm.</p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: white; padding: 15px; border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;">
+                            <div style="font-size: 11px; color: #64748b; font-weight: bold;">DOWNTIME RATE</div>
+                            <div style="font-size: 22px; font-weight: bold; color: #dc2626; margin-top: 5px;">12.5%</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;">
+                            <div style="font-size: 11px; color: #64748b; font-weight: bold;">AVAILABILITY</div>
+                            <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-top: 5px;">87.5%</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;">
+                            <div style="font-size: 11px; color: #64748b; font-weight: bold;">MTBF (PHÚT)</div>
+                            <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-top: 5px;">316</div>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;">
+                            <div style="font-size: 11px; color: #64748b; font-weight: bold;">SỐ SỰ CỐ</div>
+                            <div style="font-size: 22px; font-weight: bold; color: #1e293b; margin-top: 5px;">247</div>
+                        </div>
+                    </div>
+                </div>
+                """
+                components.html(embedded_html, height=350, scrolling=False)
 
         # ---------------------------------------------------------
-        # TAB 3: IN TEM NHÃN
+        # TAB 3: TRA CỨU & DỮ LIỆU
+        # ---------------------------------------------------------
+        elif selected_tab == "🔍 Tra cứu & Dữ liệu":
+            st.subheader("🔍 Tra Cứu Dữ Liệu Chi Tiết")
+            if df is None: df = pd.DataFrame(columns=["Chưa có dữ liệu"])
+            kw = st.text_input("🔎 Tìm kiếm từ khóa bất kỳ:")
+            if kw:
+                df_res = df[df.astype(str).apply(lambda r: r.str.contains(kw, case=False, na=False)).any(axis=1)]
+                st.dataframe(df_res, use_container_width=True)
+            else:
+                st.dataframe(df, use_container_width=True)
+
+        # ---------------------------------------------------------
+        # TAB 4: IN TEM
         # ---------------------------------------------------------
         elif selected_tab == "🖨️ In Tem":
-            st.subheader("🖨️ In Tem Zebra (ZPL)")
-            with st.form("print_form"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    pm = st.text_input("Model:", value="MDL-10293")
-                    pl = st.text_input("Lot:", value="LOT-2026")
-                with c2:
-                    ps = st.text_input("Serial:", value="SN001")
-                    pb = st.text_input("Barcode:", value="MDL-10293-LOT-2026-SN001")
-                pq = st.number_input("Số lượng:", min_value=1, value=1)
-                if st.form_submit_button("Tạo File .ZPL"):
-                    code = f"^XA\n^PW400\n^LL240\n^FO20,20^A0N,25,25^FDModel: {pm}^FS\n^FO20,55^A0N,25,25^FDLot: {pl}^FS\n^FO20,90^A0N,25,25^FDSerial: {ps}^FS\n^FO20,130^BCN,60,Y,N,N^FD{pb}^FS\n^PQ{pq}\n^XZ"
-                    st.code(code, language="text")
-                    st.download_button("📥 Tải Tem In", data=code, file_name=f"tem_{ps}.zpl")
-
-        # ---------------------------------------------------------
-        # TAB 4: DATA TỪ MÁY CHỦ
-        # ---------------------------------------------------------
-        elif selected_tab == "📊 DATA Máy Móc":
-            st.subheader("📊 Trích Xuất Dữ Liệu Máy")
-            lines_data = {k: v for k, v in credentials.get('lines', {}).items() if v.get('status') == 'Đã phê duyệt'}
-            if not lines_data: st.warning("Chưa có LINE được duyệt.")
-            else:
-                if st.button("🔄 Quét hệ thống"): st.rerun()
-                for lname, linfo in lines_data.items():
-                    active = {k: v for k, v in linfo.get('machines', {}).items() if v.get('active')}
-                    if active:
-                        st.markdown(f"### 🏭 {lname}")
-                        for m_num, m_info in active.items():
-                            with st.expander(f"🖥️ {m_info.get('name')} | {m_info.get('format')} | 📍 {m_info.get('path')}"):
-                                try:
-                                    req_path = Path(m_info.get('path', '')).resolve()
-                                    if ALLOWED_DATA_DIR not in req_path.parents and req_path != ALLOWED_DATA_DIR:
-                                        st.error(f"⛔ BẢO MẬT: Đường dẫn phải nằm trong {ALLOWED_DATA_DIR}!")
-                                        continue
-                                    if not req_path.exists():
-                                        st.error("❌ Không tìm thấy file gốc.")
-                                        continue
-                                    
-                                    fmt = m_info.get('format')
-                                    if fmt == "CSV": m_df = pd.read_csv(req_path)
-                                    elif fmt == "Excel": m_df = pd.read_excel(req_path)
-                                    elif fmt == "XLSB": m_df = pd.read_excel(req_path, engine='pyxlsb')
-                                    else: st.warning("Định dạng chưa hỗ trợ."); continue
-                                    
-                                    st.success(f"Tải thành công {len(m_df)} dòng.")
-                                    st.dataframe(m_df.head(100), use_container_width=True)
-                                except Exception:
-                                    st.error("❌ Lỗi định dạng dữ liệu.")
+            st.subheader("🖨️ In Tem Mã Vạch (ZPL)")
+            bc = st.text_input("Barcode:", value="MES-PROD-2026")
+            if st.button("Tạo mã ZPL"):
+                code = f"^XA\n^FO20,20^A0N,25,25^FD{bc}^FS\n^FO20,60^BCN,60,Y,N,N^FD{bc}^FS\n^XZ"
+                st.code(code)
 
         # ---------------------------------------------------------
         # CÁC TAB QUẢN TRỊ
         # ---------------------------------------------------------
         elif selected_tab == "📂 Cập nhật File":
-            upf = st.file_uploader("📂 Chọn file (Excel/CSV/XLSB)", type=["xlsx", "xls", "xlsb", "csv"])
+            upf = st.file_uploader("📂 Tải lên file dữ liệu (.csv/.xlsx)", type=["xlsx", "csv"])
             if upf:
                 if upf.name.endswith('.csv'): df = pd.read_csv(upf)
-                elif upf.name.endswith('.xlsb'): df = pd.read_excel(upf, engine='pyxlsb')
                 else: df = pd.read_excel(upf)
                 df.to_csv("data_server.csv", index=False)
-                st.success("✅ Đã ghi đè dữ liệu thành công! Hãy bấm làm mới hoặc chuyển tab.")
+                st.success("✅ Cập nhật thành công!")
 
         elif selected_tab == "👥 Quản lý Users":
-            st.subheader("📋 Phân quyền")
-            u_list = [{"Tài khoản": k, "Tên": v.get('name'), "Chức vụ": v.get('position')} for k, v in credentials['usernames'].items()]
+            st.subheader("👥 Danh sách tài khoản")
+            u_list = [{"Username": k, "Tên": v.get('name'), "Vị trí": v.get('position')} for k, v in credentials['usernames'].items()]
             st.table(pd.DataFrame(u_list))
 
-            with st.expander("➕ Tạo Tài Khoản"):
-                with st.form("new_u"):
-                    c1, c2 = st.columns(2)
-                    with c1: nu = st.text_input("Username*"); nn = st.text_input("Tên*")
-                    with c2: np = st.text_input("Mật khẩu*", type="password"); nl = st.selectbox("Line:", line_options)
-                    p_admin = st.checkbox("Quyền Quản Trị Viên", value=False)
-                    if st.form_submit_button("Tạo"):
-                        if nu and np and nn:
-                            if nu in credentials['usernames']: st.error("Đã tồn tại!")
-                            else:
-                                h = {'u': {nu: {'password': np}}}; stauth.Hasher.hash_passwords(h)
-                                credentials['usernames'][nu] = {'name': nn, 'password': h['u'][nu]['password'], 'line': nl, 'role': 'admin' if p_admin else 'user', 'permissions': {'view': True, 'edit_data': p_admin, 'edit_line': p_admin, 'edit_account': p_admin}}
-                                save_users(credentials); st.success("✅ Xong!"); time.sleep(1); st.rerun()
-
         elif selected_tab == "🏭 Quản lý LINE":
-            st.subheader("🏭 Thiết Lập Thiết Bị")
-            with st.form("new_l", clear_on_submit=True):
-                n_ln = st.text_input("Tên LINE mới*:")
-                if st.form_submit_button("Tạo"):
-                    if n_ln: credentials['lines'][n_ln] = {'status': 'Đã phê duyệt', 'machines': {}}; save_users(credentials); st.success("✅ Đã tạo!"); time.sleep(1); st.rerun()
-            
-            for ln, li in credentials.get('lines', {}).items():
-                with st.expander(f"🏭 {ln}"):
-                    df_m = pd.DataFrame([{"Mã": m, "Tên": i.get('name'), "Đường dẫn": i.get('path')} for m, i in li.get('machines', {}).items()])
-                    if not df_m.empty: st.dataframe(df_m, hide_index=True)
-                    with st.form(f"add_{ln}"):
-                        c1, c2 = st.columns(2)
-                        with c1: mn = st.text_input("Mã Máy*"); mt = st.text_input("Tên*")
-                        with c2: mf = st.selectbox("Định dạng:", ["CSV", "Excel", "XLSB"]); mp = st.text_input("Path:", value=f"{ALLOWED_DATA_DIR}/...")
-                        if st.form_submit_button("Lưu"):
-                            if mn and mt:
-                                if 'machines' not in credentials['lines'][ln]: credentials['lines'][ln]['machines'] = {}
-                                credentials['lines'][ln]['machines'][mn] = {'name': mt, 'format': mf, 'path': mp, 'active': True}
-                                save_users(credentials); st.success("✅ Đã lưu!"); time.sleep(1); st.rerun()
+            st.subheader("🏭 Quản lý LINE sản xuất")
+            with st.form("new_line"):
+                nl = st.text_input("Tên Line mới:")
+                if st.form_submit_button("Thêm"):
+                    if nl:
+                        credentials['lines'][nl] = {'status': 'Đã phê duyệt', 'machines': {}}
+                        save_users(credentials)
+                        st.success("✅ Đã thêm line!")
+                        time.sleep(1)
+                        st.rerun()
