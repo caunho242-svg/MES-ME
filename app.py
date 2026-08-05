@@ -10,7 +10,7 @@ import io
 from pathlib import Path
 
 # -------------------------------------------------------------------
-# 0. THIẾT LẬP BẢO MẬT HỆ THỐNG (CẤP ĐỘ DOANH NGHIỆP)
+# 0. THIẾT LẬP BẢO MẬT HỆ THỐNG
 # -------------------------------------------------------------------
 ALLOWED_DATA_DIR = Path("./Data_Server").resolve()
 ALLOWED_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -75,10 +75,6 @@ if authentication_status == False:
 elif authentication_status == None:
     st.warning('🔐 Vui lòng nhập thông tin để truy cập hệ thống MES.')
 elif authentication_status:
-    # --- CẢNH BÁO BẢO MẬT KHI ĐĂNG NHẬP ---
-    if COOKIE_KEY == "fallback_unsafe_key_change_me_in_production":
-        st.error("🚨 BÁO ĐỘNG BẢO MẬT: Hệ thống đang dùng khóa Cookie mặc định. Dữ liệu phiên đăng nhập có thể bị đánh cắp!")
-    
     # -------------------------------------------------------------------
     # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
     # -------------------------------------------------------------------
@@ -101,7 +97,10 @@ elif authentication_status:
 
     df = None 
     if os.path.exists("data_server.csv"):
-        df = pd.read_csv("data_server.csv")
+        try:
+            df = pd.read_csv("data_server.csv")
+        except Exception:
+            df = None
 
     approved_lines = [lname for lname, linfo in credentials.get('lines', {}).items() if linfo.get('status') == 'Đã phê duyệt']
     line_options = ["Chưa cập nhật", "Tất cả"] + approved_lines
@@ -133,7 +132,7 @@ elif authentication_status:
         if selected_tab == "📈 Dashboard":
             st.subheader("📈 Dashboard Sản Xuất Tổng Quan")
             if df is None or df.empty:
-                st.info("💡 Chưa có dữ liệu. Vui lòng cập nhật.")
+                st.info("💡 Chưa có dữ liệu hoặc file dữ liệu trống. Vui lòng vào tab '📂 Cập nhật File' để tải lên file mới.")
             else:
                 total_records = len(df)
                 status_col = next((col for col in df.columns if any(kw in str(col).lower() for kw in ["status", "kết quả", "đánh giá", "trạng thái", "result"])), None)
@@ -230,7 +229,7 @@ elif authentication_status:
                     st.download_button("📥 Tải Tem In", data=code, file_name=f"tem_{ps}.zpl")
 
         # ---------------------------------------------------------
-        # TAB 4: DATA TỪ MÁY CHỦ (BẢO MẬT ĐƯỜNG DẪN)
+        # TAB 4: DATA TỪ MÁY CHỦ
         # ---------------------------------------------------------
         elif selected_tab == "📊 DATA Máy Móc":
             st.subheader("📊 Trích Xuất Dữ Liệu Máy")
@@ -274,7 +273,7 @@ elif authentication_status:
                 elif upf.name.endswith('.xlsb'): df = pd.read_excel(upf, engine='pyxlsb')
                 else: df = pd.read_excel(upf)
                 df.to_csv("data_server.csv", index=False)
-                st.success("✅ Đã ghi đè dữ liệu thành công!")
+                st.success("✅ Đã ghi đè dữ liệu thành công! Hãy bấm làm mới hoặc chuyển tab.")
 
         elif selected_tab == "👥 Quản lý Users":
             st.subheader("📋 Phân quyền")
