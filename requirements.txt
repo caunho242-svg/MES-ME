@@ -1,6 +1,6 @@
-streamlit
+streamlit==1.32.0
 pandas
-streamlit-authenticator
+streamlit-authenticator==0.3.2
 langchain-experimental
 langchain-openai
 xlsxwriter
