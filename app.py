@@ -6,6 +6,20 @@ from langchain_openai import ChatOpenAI
 import os
 import json
 import time
+import io
+
+# -------------------------------------------------------------------
+# 0. THIẾT LẬP BẢO MẬT HỆ THỐNG
+# -------------------------------------------------------------------
+# Đảm bảo thư mục dữ liệu nội bộ được tạo an toàn (Chống Path Traversal)
+ALLOWED_DATA_DIR = os.path.abspath("./Data_Server")
+os.makedirs(ALLOWED_DATA_DIR, exist_ok=True)
+
+# Lấy khóa bảo mật Cookie từ Streamlit Secrets, nếu không có dùng fallback (cảnh báo)
+try:
+    COOKIE_KEY = st.secrets["COOKIE_KEY"]
+except (KeyError, FileNotFoundError):
+    COOKIE_KEY = "fallback_unsafe_key_change_me_in_production"
 
 # -------------------------------------------------------------------
 # 1. HỆ THỐNG QUẢN LÝ DỮ LIỆU TÀI KHOẢN VÀ LINE (JSON)
@@ -51,14 +65,15 @@ def save_users(creds):
 # -------------------------------------------------------------------
 # 2. XỬ LÝ GIAO DIỆN ĐĂNG NHẬP
 # -------------------------------------------------------------------
-st.set_page_config(page_title="Hệ thống Trợ lý AI Excel", layout="wide")
+st.set_page_config(page_title="MES Dashboard & AI", layout="wide", page_icon="🏭")
 
 credentials = load_users()
 
+# BẢO MẬT 1: Không hardcode key mã hóa trên source code
 authenticator = stauth.Authenticate(
     credentials,
-    'excel_ai_cookie',
-    'auth_key_123456',
+    'mes_secure_cookie',
+    COOKIE_KEY,
     cookie_expiry_days=1
 )
 
@@ -73,6 +88,9 @@ if authentication_status == False:
 elif authentication_status == None:
     st.warning('Vui lòng nhập Nickname và Mật khẩu để tiếp tục.')
 elif authentication_status:
+    if COOKIE_KEY == "fallback_unsafe_key_change_me_in_production":
+         st.warning("⚠️ Cảnh báo Bảo mật: Hệ thống đang dùng khóa cookie mặc định. Vui lòng cấu hình st.secrets['COOKIE_KEY']!")
+
     # -------------------------------------------------------------------
     # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
     # -------------------------------------------------------------------
@@ -83,7 +101,8 @@ elif authentication_status:
     current_department = current_user_info.get('department', 'Chưa rõ')
     current_line = current_user_info.get('line', 'Chưa rõ')
     
-    st.title(f"🤖 Trợ lý AI - Xin chào {name} ({current_position} - {current_department} - {current_line})!")
+    st.title(f"🏭 Hệ Thống MES & Trợ Lý AI")
+    st.caption(f"👤 Xin chào: **{name}** | Chức vụ: **{current_position}** | Phòng ban: **{current_department}** | LINE: **{current_line}**")
     st.markdown("---")
 
     with st.sidebar:
@@ -111,559 +130,358 @@ elif authentication_status:
     # Xây dựng Menu Động dựa trên quyền hạn
     menu_options = []
     
-    # Bất kỳ ai có quyền xem (hoặc admin) đều thấy tab tổng hợp DATA này
     if can_view:
-        menu_options.append("📊 DATA Tổng hợp")
+        menu_options.extend(["📈 Dashboard Tổng Quan", "🔍 Tra cứu & Báo cáo", "🖨️ In Tem Nhãn", "📊 DATA Máy Móc"])
         
-    if can_edit_data:
-        menu_options.append("📂 Cập nhật Dữ liệu")
-    if can_edit_account:
-        menu_options.append("👥 Quản lý Tài khoản")
-    if can_edit_line:
-        menu_options.append("🏭 Quản lý LINE")
+    if can_edit_data: menu_options.append("📂 Cập nhật Dữ liệu")
+    if can_edit_account: menu_options.append("👥 Quản lý Tài khoản")
+    if can_edit_line: menu_options.append("🏭 Quản lý LINE")
         
-    # ================= KHU VỰC DÀNH CHO QUẢN LÝ TÙY THEO QUYỀN =================
+    # ================= ĐIỀU HƯỚNG TABS =================
     if menu_options:
         if "admin_menu" not in st.session_state or st.session_state.admin_menu not in menu_options:
             st.session_state.admin_menu = menu_options[0]
-            
-        def go_home():
-            st.session_state.admin_menu = menu_options[0]
 
-        col1, col2 = st.columns([8.5, 1.5])
-        with col1:
-            st.success("🛠️ Khu vực Quản lý & Cấu hình (Hiển thị theo phân quyền)")
-        with col2:
-            st.button("🏠 Trang chủ", on_click=go_home, use_container_width=True)
-
-        selected_tab = st.radio("Điều hướng:", menu_options, horizontal=True, key="admin_menu", label_visibility="collapsed")
+        selected_tab = st.radio("Điều hướng Menu:", menu_options, horizontal=True, key="admin_menu", label_visibility="collapsed")
         st.markdown("---")
         
-        # TAB 1: CẬP NHẬT DỮ LIỆU
-        if selected_tab == "📂 Cập nhật Dữ liệu":
-            uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV) để cập nhật", type=["xlsx", "xls", "csv"])
-            if uploaded_file is not None:
-                if uploaded_file.name.endswith('.csv'):
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    df = pd.read_excel(uploaded_file)
-                df.to_csv("data_server.csv", index=False)
-                st.success("✅ Đã cập nhật cơ sở dữ liệu chung cho toàn bộ nhân viên!")
-
-        # TAB 2: QUẢN LÝ TÀI KHOẢN (VÀ PHÂN QUYỀN CHI TIẾT)
-        elif selected_tab == "👥 Quản lý Tài khoản":
-            st.subheader("📋 Danh sách tài khoản & Phân quyền thao tác")
-            user_list = []
-            for uname, info in credentials['usernames'].items():
-                perms = info.get('permissions', {})
-                perm_str = []
-                if perms.get('view', True): perm_str.append("👁️ Xem")
-                if perms.get('edit_data') or info.get('role') == 'admin': perm_str.append("📂 File")
-                if perms.get('edit_line') or info.get('role') == 'admin': perm_str.append("🏭 Line")
-                if perms.get('edit_account') or info.get('role') == 'admin': perm_str.append("👑 Admin")
+        # ---------------------------------------------------------
+        # TAB 1: DASHBOARD TỔNG QUAN
+        # ---------------------------------------------------------
+        if selected_tab == "📈 Dashboard Tổng Quan":
+            st.subheader("📈 Dashboard Sản Xuất Tổng Quan")
+            
+            if df is None or df.empty:
+                st.info("💡 Chưa có dữ liệu để hiển thị Dashboard. Vui lòng cập nhật dữ liệu.")
+            else:
+                col1, col2, col3, col4 = st.columns(4)
+                total_records = len(df)
                 
-                user_list.append({
-                    "Username": uname, 
-                    "Tên hiển thị": info.get('name', ''), 
-                    "Chức vụ": info.get('position', 'Chưa cập nhật'),
-                    "LINE": info.get('line', 'Chưa cập nhật'),
-                    "Quyền hạn": " | ".join(perm_str) if perm_str else "❌ Khóa hoàn toàn"
-                })
-            st.table(pd.DataFrame(user_list))
-
-            with st.expander("➕ Cấp tài khoản mới"):
-                with st.form("new_user_form", clear_on_submit=True):
-                    st.markdown("**1. Thông tin cơ bản:**")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_user = st.text_input("Tên đăng nhập (Username)*:", placeholder="VD: nhanvien2")
-                        new_name = st.text_input("Tên hiển thị*:", placeholder="VD: Trần Văn B")
-                        new_position = st.text_input("Chức vụ:", placeholder="VD: Tổ trưởng...") 
-                    with col2:
-                        new_dept = st.text_input("Phòng ban:", placeholder="VD: Kho, Tài chính...")
-                        new_line = st.selectbox("LINE:", line_options)
-                        new_pass = st.text_input("Mật khẩu*:", type="password")
-                    
-                    st.markdown("**2. Phân quyền chi tiết (Check vào các mục cho phép):**")
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
-                        new_perm_view = st.checkbox("👁️ Xem và tra cứu dữ liệu AI (Cơ bản)", value=True)
-                        new_perm_data = st.checkbox("📂 Cập nhật file dữ liệu (Excel/CSV)", value=False)
-                    with col_p2:
-                        new_perm_line = st.checkbox("🏭 Quản lý LINE & Cấu hình máy móc", value=False)
-                        new_perm_acc = st.checkbox("👥 Quản lý Tài khoản (Quyền Admin)", value=False)
-                    
-                    if st.form_submit_button("Tạo tài khoản"):
-                        if new_user == "" or new_pass == "" or new_name == "":
-                            st.error("⚠️ Vui lòng nhập đầy đủ các trường bắt buộc (*)")
-                        elif new_user in credentials['usernames']:
-                            st.error("⚠️ Tên đăng nhập này đã tồn tại!")
-                        else:
-                            temp_cred = {'usernames': {new_user: {'password': new_pass}}}
-                            stauth.Hasher.hash_passwords(temp_cred)
-                            hashed_pass = temp_cred['usernames'][new_user]['password']
-                            credentials['usernames'][new_user] = {
-                                'name': new_name, 'password': hashed_pass, 
-                                'role': 'admin' if new_perm_acc else 'user',
-                                'position': new_position if new_position != "" else "Chưa cập nhật",
-                                'department': new_dept if new_dept != "" else "Chưa cập nhật",
-                                'line': new_line,
-                                'permissions': {
-                                    'view': new_perm_view, 'edit_data': new_perm_data, 
-                                    'edit_line': new_perm_line, 'edit_account': new_perm_acc
-                                }
-                            }
-                            save_users(credentials) 
-                            st.success(f"✅ Đã tạo tài khoản '{new_user}' thành công!")
-                            time.sleep(1.5)
-                            st.rerun()
-
-            with st.expander("✏️ Chỉnh sửa thông tin & Phân quyền"):
-                edit_user = st.selectbox("Chọn tài khoản cần sửa:", list(credentials['usernames'].keys()), key="edit_select")
-                if edit_user:
-                    edit_info = credentials['usernames'][edit_user]
-                    curr_perms = edit_info.get('permissions', {})
-                    is_legacy_admin = edit_info.get('role') == 'admin'
-                    
-                    with st.form("edit_user_form"):
-                        st.markdown("**1. Thông tin cơ bản:**")
-                        e_name = st.text_input("Tên hiển thị*:", value=edit_info.get('name', ''))
-                        col1, col2, col3 = st.columns(3)
-                        with col1: e_pos = st.text_input("Chức vụ:", value=edit_info.get('position', ''))
-                        with col2: e_dept = st.text_input("Phòng ban:", value=edit_info.get('department', ''))
-                        with col3:
-                            curr_line = edit_info.get('line', 'Chưa cập nhật')
-                            if curr_line not in line_options: line_options.append(curr_line)
-                            e_line = st.selectbox("LINE:", line_options, index=line_options.index(curr_line))
-                        e_pass = st.text_input("Mật khẩu mới (để trống nếu không đổi):", type="password")
+                ng_count = 0
+                for col in df.columns:
+                    if "status" in col.lower() or "kết quả" in col.lower() or "đánh giá" in col.lower():
+                        ng_count = len(df[df[col].astype(str).str.upper().isin(["NG", "FAIL", "LỖI"])])
+                        break
                         
-                        st.markdown("**2. Phân quyền chi tiết (Check vào các mục cho phép):**")
-                        col_ep1, col_ep2 = st.columns(2)
-                        with col_ep1:
-                            e_perm_view = st.checkbox("👁️ Xem và tra cứu dữ liệu AI (Cơ bản)", value=curr_perms.get('view', True))
-                            e_perm_data = st.checkbox("📂 Cập nhật file dữ liệu (Excel/CSV)", value=curr_perms.get('edit_data', False) or is_legacy_admin)
-                        with col_ep2:
-                            e_perm_line = st.checkbox("🏭 Quản lý LINE & Cấu hình máy móc", value=curr_perms.get('edit_line', False) or is_legacy_admin)
-                            e_perm_acc = st.checkbox("👥 Quản lý Tài khoản (Quyền Admin)", value=curr_perms.get('edit_account', False) or is_legacy_admin)
-                            
-                        if st.form_submit_button("Cập nhật tài khoản"):
-                            if e_name.strip() == "": st.error("❌ 'Tên hiển thị' không được để trống!")
-                            elif e_pass != "" and len(e_pass) < 5: st.error("❌ Mật khẩu mới phải có ít nhất 5 ký tự!")
-                            else:
-                                credentials['usernames'][edit_user].update({
-                                    'name': e_name.strip(), 'position': e_pos.strip(), 
-                                    'department': e_dept.strip(), 'line': e_line,
-                                    'role': 'admin' if e_perm_acc else 'user',
-                                    'permissions': {
-                                        'view': e_perm_view, 'edit_data': e_perm_data, 
-                                        'edit_line': e_perm_line, 'edit_account': e_perm_acc
-                                    }
-                                })
-                                if e_pass != "":
-                                    t_cred = {'usernames': {edit_user: {'password': e_pass}}}
-                                    stauth.Hasher.hash_passwords(t_cred)
-                                    credentials['usernames'][edit_user]['password'] = t_cred['usernames'][edit_user]['password']
-                                save_users(credentials); st.success(f"✅ Đã cập nhật '{edit_user}'!"); time.sleep(1.5); st.rerun()
+                ok_count = total_records - ng_count
+                ng_rate = round((ng_count / total_records) * 100, 2) if total_records > 0 else 0
 
-            with st.expander("❌ Xóa tài khoản"):
-                del_list = [u for u in credentials['usernames'].keys() if u != 'admin']
-                if not del_list: st.info("Không có tài khoản con nào để xóa.")
-                else:
-                    del_user = st.selectbox("Chọn tài khoản cần xóa:", del_list, key="del_select")
-                    st.warning(f"⚠️ Chắc chắn muốn xóa vĩnh viễn tài khoản '{del_user}'?")
-                    if st.button("Xác nhận Xóa Tài Khoản"):
-                        del credentials['usernames'][del_user]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
+                col1.metric(label="📦 Tổng Sản Lượng", value=f"{total_records:,}")
+                col2.metric(label="✅ Sản Phẩm OK", value=f"{ok_count:,}")
+                col3.metric(label="❌ Sản Phẩm NG (Lỗi)", value=f"{ng_count:,}")
+                col4.metric(label="📉 Tỉ Lệ Lỗi (Defect Rate)", value=f"{ng_rate}%")
+                
+                st.markdown("---")
+                col_chart1, col_chart2 = st.columns(2)
+                
+                with col_chart1:
+                    st.markdown("**📊 Biểu đồ Sản Lượng (Hiển thị 50 dòng gần nhất)**")
+                    chart_data = df.tail(50).copy()
+                    st.line_chart(chart_data.select_dtypes(include='number'))
+                    
+                with col_chart2:
+                    st.markdown("**📋 Xem trước dữ liệu (Top 10)**")
+                    st.dataframe(df.head(10), use_container_width=True)
 
-        # TAB 3: QUẢN LÝ LINE
-        elif selected_tab == "🏭 Quản lý LINE":
-            manager_options = ["Chưa phân công"]
-            for u_name, u_info in credentials['usernames'].items():
-                manager_options.append(f"{u_name} ({u_info.get('name', '')})")
+        # ---------------------------------------------------------
+        # TAB 2: TRA CỨU, BÁO CÁO & AI
+        # ---------------------------------------------------------
+        elif selected_tab == "🔍 Tra cứu & Báo cáo":
+            st.subheader("🔍 Tra cứu Dữ liệu & Xuất Báo cáo")
             
-            with st.expander("➕ Tạo LINE mới"):
-                with st.form("new_line_form", clear_on_submit=True):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        new_lnumber = st.text_input("Số LINE (Tùy chọn):", placeholder="VD: 01, 02...")
-                        new_lname = st.text_input("Tên LINE*:", placeholder="VD: Line 1, Lò nung...")
-                        new_larea = st.text_input("Khu vực (Tùy chọn):", placeholder="VD: Khu A...") 
-                    with col2:
-                        new_lmanager = st.selectbox("Người phụ trách:", manager_options) 
-                        new_ldescription = st.text_input("Mô tả / Ghi chú:")
-                        new_lstatus = st.selectbox("Trạng thái ban đầu:", ["Đã phê duyệt", "Không phê duyệt"])
-                    
-                    if st.form_submit_button("Tạo LINE"):
-                        if new_lname.strip() == "": st.error("⚠️ Tên LINE không được để trống!")
-                        elif new_lname in credentials.get('lines', {}): st.error("⚠️ Tên LINE này đã tồn tại!")
-                        else:
-                            credentials['lines'][new_lname] = {
-                                'number': new_lnumber.strip() if new_lnumber.strip() != "" else "Chưa cập nhật",
-                                'area': new_larea.strip() if new_larea.strip() != "" else "Chưa cập nhật",
-                                'manager': new_lmanager, 'description': new_ldescription.strip(), 'status': new_lstatus, 'machines': {}
-                            }
-                            save_users(credentials); st.success(f"✅ Đã tạo LINE '{new_lname}'!"); time.sleep(1.5); st.rerun()
-
-            with st.expander("✏️ Chỉnh sửa / Bỏ phê duyệt LINE"):
-                lines_keys = list(credentials.get('lines', {}).keys())
-                if lines_keys:
-                    edit_lname = st.selectbox("Chọn LINE cần sửa:", lines_keys, key="edit_line_select")
-                    if edit_lname:
-                        line_info = credentials['lines'][edit_lname]
-                        with st.form("edit_line_form"):
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                el_number = st.text_input("Số LINE:", value=line_info.get('number', '')) 
-                                el_area = st.text_input("Khu vực:", value=line_info.get('area', '')) 
-                                curr_manager = line_info.get('manager', 'Chưa phân công')
-                                if curr_manager not in manager_options: manager_options.append(curr_manager)
-                                el_manager = st.selectbox("Người phụ trách:", manager_options, index=manager_options.index(curr_manager))
-                            with col2:
-                                el_desc = st.text_input("Mô tả:", value=line_info.get('description', ''))
-                                el_status = st.selectbox("Trạng thái:", ["Đã phê duyệt", "Không phê duyệt"], index=0 if line_info.get('status') == 'Đã phê duyệt' else 1)
-                            if st.form_submit_button("Cập nhật LINE"):
-                                credentials['lines'][edit_lname].update({'number': el_number.strip(), 'area': el_area.strip(), 'manager': el_manager, 'description': el_desc.strip(), 'status': el_status})
-                                save_users(credentials); st.success(f"✅ Đã cập nhật LINE '{edit_lname}'!"); time.sleep(1.5); st.rerun()
-
-            with st.expander("✅ Phê duyệt LINE"):
-                pending_lines = [k for k, v in credentials.get('lines', {}).items() if v.get('status') != 'Đã phê duyệt']
-                if not pending_lines: st.success("Tuyệt vời! Tất cả các LINE đều đang ở trạng thái Đã phê duyệt.")
-                else:
-                    approve_lname = st.selectbox("Chọn LINE để phê duyệt:", pending_lines)
-                    if st.button("Xác nhận Phê duyệt"):
-                        credentials['lines'][approve_lname]['status'] = 'Đã phê duyệt'
-                        save_users(credentials); st.success(f"✅ Đã phê duyệt '{approve_lname}'!"); time.sleep(1.5); st.rerun()
-
-            with st.expander("❌ Xóa LINE"):
-                if lines_keys:
-                    del_lname = st.selectbox("Chọn LINE cần xóa:", lines_keys, key="del_line_select")
-                    st.warning(f"⚠️ Chú ý: Việc xóa sẽ không ảnh hưởng đến tài khoản đang có tên LINE này. Chắc chắn xóa '{del_lname}'?")
-                    if st.button("Xác nhận Xóa LINE"):
-                        del credentials['lines'][del_lname]; save_users(credentials); st.success(f"✅ Đã xóa!"); time.sleep(1.5); st.rerun()
-
-            st.markdown("---")
-            st.subheader("🏭 Danh sách LINE & Thiết lập")
-            lines_data = credentials.get('lines', {})
-            if not lines_data:
-                st.info("Hệ thống chưa có LINE nào. Hãy tạo mới ở phía trên.")
-            else:
-                for lname, linfo in lines_data.items():
-                    num_macs = len(linfo.get('machines', {}))
-                    status_icon = "🟢" if linfo.get('status') == 'Đã phê duyệt' else "🔴"
-                    
-                    with st.expander(f"{status_icon} LINE: {lname} &nbsp;&nbsp;|&nbsp;&nbsp; Khu vực: {linfo.get('area', 'Chưa cập nhật')} &nbsp;&nbsp;|&nbsp;&nbsp; Máy móc: {num_macs}"):
-                        st.caption(f"**Số LINE:** {linfo.get('number', '---')} &nbsp;|&nbsp; **Trạng thái:** {linfo.get('status')} &nbsp;|&nbsp; **Phụ trách:** {linfo.get('manager', '---')}")
-
-                        line_machines = linfo.get('machines', {})
-                        edit_key = f"edit_mode_{lname}"
-                        if edit_key not in st.session_state:
-                            st.session_state[edit_key] = False
-
-                        if st.session_state[edit_key]:
-                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname} *(Đang chỉnh sửa)*:**")
-                        else:
-                            st.markdown(f"**🖥️ Danh sách Máy thuộc {lname}:**")
-
-                        mac_list = []
-                        for m_num, m_info in line_machines.items():
-                            mac_list.append({
-                                "Số máy (Mã ID)": m_num,
-                                "Tên máy": m_info.get('name', ''),
-                                "Vị trí (Ô CSV)": m_info.get('position', ''),
-                                "Định dạng file": m_info.get('format', 'CSV'),
-                                "Đường dẫn gốc": m_info.get('path', ''),
-                                "File mẫu (Template)": m_info.get('template_path', ''),
-                                "Lấy dữ liệu": bool(m_info.get('active', True))
-                            })
-                        
-                        df_mac = pd.DataFrame(mac_list)
-                        if df_mac.empty:
-                            df_mac = pd.DataFrame(columns=["Số máy (Mã ID)", "Tên máy", "Vị trí (Ô CSV)", "Định dạng file", "Đường dẫn gốc", "File mẫu (Template)", "Lấy dữ liệu"])
-
-                        if not st.session_state[edit_key]:
-                            st.dataframe(df_mac, hide_index=True, use_container_width=True)
-                            if not df_mac.empty:
-                                if st.button(f"✏️ Chỉnh sửa bảng máy ({lname})", key=f"btn_edit_{lname}"):
-                                    st.session_state[edit_key] = True; st.rerun()
-                        else:
-                            edited_df = st.data_editor(
-                                df_mac,
-                                column_config={
-                                    "Số máy (Mã ID)": st.column_config.TextColumn("Số máy (Mã ID)", disabled=True),
-                                    "Định dạng file": st.column_config.SelectboxColumn("Định dạng file", options=["CSV", "Excel", "TXT", "JSON", "Khác"]),
-                                },
-                                hide_index=True, use_container_width=True, key=f"editor_{lname}"
-                            )
-                            if not df_mac.empty:
-                                col_b1, col_b2 = st.columns([2, 8])
-                                with col_b1:
-                                    if st.button(f"💾 Lưu", type="primary", key=f"save_inline_{lname}"):
-                                        has_err = False
-                                        new_machines = {}
-                                        safe_str = lambda x: "" if pd.isna(x) or x is None else str(x).strip()
-                                        for idx, row in edited_df.iterrows():
-                                            m_num = safe_str(row["Số máy (Mã ID)"])
-                                            m_name = safe_str(row["Tên máy"])
-                                            if m_name == "":
-                                                st.error(f"⚠️ Lỗi: Máy '{m_num}' đang bị trống Tên! Vui lòng điền tên máy.")
-                                                has_err = True; break
-                                            new_machines[m_num] = {
-                                                'name': m_name,
-                                                'position': safe_str(row.get("Vị trí (Ô CSV)", "")),
-                                                'format': safe_str(row.get("Định dạng file", "CSV")),
-                                                'path': safe_str(row.get("Đường dẫn gốc", "")),
-                                                'template_path': safe_str(row.get("File mẫu (Template)", "")),
-                                                'active': bool(row.get("Lấy dữ liệu", True))
-                                            }
-                                        if not has_err:
-                                            credentials['lines'][lname]['machines'] = new_machines
-                                            save_users(credentials); st.success(f"✅ Đã lưu thay đổi LINE {lname}!")
-                                            st.session_state[edit_key] = False; time.sleep(1); st.rerun()
-                                with col_b2:
-                                    if st.button(f"❌ Hủy", key=f"cancel_inline_{lname}"):
-                                        st.session_state[edit_key] = False; st.rerun()
-
-                        st.write("")
-                        tab_add, tab_del = st.tabs(["➕ Thêm máy mới", "❌ Xóa máy"])
-                        
-                        with tab_add:
-                            with st.form(f"add_mac_form_{lname}", clear_on_submit=True):
-                                col_m1, col_m2 = st.columns(2)
-                                with col_m1:
-                                    mac_num = st.text_input("Số máy* (Mã định danh):", key=f"add_num_{lname}")
-                                    mac_name = st.text_input("Tên máy*:", key=f"add_name_{lname}")
-                                    mac_pos = st.text_input("Vị trí (Ô trong CSV):", key=f"add_pos_{lname}")
-                                with col_m2:
-                                    mac_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "TXT", "JSON", "Khác"], key=f"add_fmt_{lname}")
-                                    mac_path = st.text_input("Đường dẫn file gốc:", key=f"add_path_{lname}")
-                                    mac_template = st.text_input("Đường dẫn File mẫu (Excel):", placeholder="Để trống nếu không dùng...", key=f"add_tpl_{lname}")
-                                    mac_active = st.checkbox("Kích hoạt (Lấy dữ liệu)", value=True, key=f"add_act_{lname}")
-                                    
-                                if st.form_submit_button("Thêm Máy Mới"):
-                                    if mac_num.strip() == "" or mac_name.strip() == "":
-                                        st.error("⚠️ 'Số máy' và 'Tên máy' không được để trống!")
-                                    elif mac_num.strip() in line_machines:
-                                        st.error("⚠️ Số máy này đã tồn tại!")
-                                    else:
-                                        if 'machines' not in credentials['lines'][lname]:
-                                            credentials['lines'][lname]['machines'] = {}
-                                        credentials['lines'][lname]['machines'][mac_num.strip()] = {
-                                            'name': mac_name.strip(),
-                                            'position': mac_pos.strip(),
-                                            'format': mac_format,
-                                            'path': mac_path.strip(),
-                                            'template_path': mac_template.strip(),
-                                            'active': mac_active
-                                        }
-                                        save_users(credentials); st.success(f"✅ Đã thêm máy '{mac_num.strip()}'!"); time.sleep(1.5); st.rerun()
-
-                        with tab_del:
-                            if not line_machines: st.info("Chưa có máy nào để xóa.")
-                            else:
-                                del_mac_num = st.selectbox("Chọn máy cần xóa:", list(line_machines.keys()), key=f"del_sel_{lname}")
-                                if st.button("Xác nhận Xóa Máy", key=f"del_btn_{lname}"):
-                                    del credentials['lines'][lname]['machines'][del_mac_num]
-                                    save_users(credentials); st.success(f"✅ Đã xóa máy '{del_mac_num}'!"); time.sleep(1.5); st.rerun()
-
-        # TAB 4: DATA TỔNG HỢP TỪ CÁC LINE
-        elif selected_tab == "📊 DATA Tổng hợp":
-            st.subheader("📊 Dữ liệu Tổng hợp từ các Máy & LINE")
-            st.info("💡 Hệ thống tự động truy xuất dữ liệu từ các 'Đường dẫn' file mà bạn đã khai báo trong Quản lý LINE.")
-            
-            lines_data = credentials.get('lines', {})
-            approved_lines_data = {k: v for k, v in lines_data.items() if v.get('status') == 'Đã phê duyệt'}
-            
-            if not approved_lines_data:
-                st.warning("⚠️ Chưa có LINE nào được phê duyệt để thu thập dữ liệu.")
-            else:
-                if st.button("🔄 Làm mới dữ liệu", type="primary"):
-                    st.rerun()
-                    
-                for lname, linfo in approved_lines_data.items():
-                    st.markdown(f"### 🏭 LINE: {lname}")
-                    machines = linfo.get('machines', {})
-                    # Lọc ra các máy đang bật "Kích hoạt (Lấy dữ liệu)"
-                    active_machines = {k: v for k, v in machines.items() if v.get('active')}
-                    
-                    if not active_machines:
-                        st.caption(f"Không có máy nào đang được kích hoạt thu thập dữ liệu trong LINE {lname}.")
-                        st.markdown("---")
-                        continue
-                        
-                    for m_num, m_info in active_machines.items():
-                        m_name = m_info.get('name', 'Chưa có tên')
-                        m_path = m_info.get('path', '')
-                        m_format = m_info.get('format', 'CSV')
-                        
-                        with st.expander(f"🖥️ Máy: {m_name} (ID: {m_num}) | 📁 Định dạng: {m_format} | 📍 Đường dẫn: {m_path}"):
-                            if not m_path:
-                                st.warning("⚠️ Máy này chưa được cấu hình đường dẫn file dữ liệu.")
-                                continue
-                            
-                            if not os.path.exists(m_path):
-                                st.error(f"❌ Không tìm thấy file tại đường dẫn: `{m_path}`. Vui lòng kiểm tra lại thiết lập.")
-                                continue
-                                
-                            try:
-                                m_df = None
-                                # Xử lý đọc file theo định dạng đã khai báo
-                                if m_format == "CSV":
-                                    m_df = pd.read_csv(m_path)
-                                elif m_format == "Excel":
-                                    m_df = pd.read_excel(m_path)
-                                elif m_format == "JSON":
-                                    m_df = pd.read_json(m_path)
-                                elif m_format == "TXT":
-                                    m_df = pd.read_csv(m_path, sep=None, engine='python')
-                                else:
-                                    st.warning(f"⚠️ Định dạng '{m_format}' hiện chưa được hỗ trợ đọc tự động.")
-                                    
-                                if m_df is not None:
-                                    # ====================================================
-                                    # CHUẨN HÓA DỮ LIỆU THEO FILE MẪU (EXCEL TEMPLATE)
-                                    # ====================================================
-                                    m_template_path = m_info.get('template_path', '')
-                                    if m_template_path and str(m_template_path).strip() != "":
-                                        if os.path.exists(m_template_path):
-                                            try:
-                                                # Đọc file mẫu chỉ để lấy tên cột (không lấy dữ liệu)
-                                                tpl_df = pd.read_excel(m_template_path, nrows=0)
-                                                standard_cols = tpl_df.columns.tolist()
-                                                
-                                                # Ép dữ liệu gốc (m_df) theo đúng các cột của file mẫu
-                                                m_df = m_df.reindex(columns=standard_cols)
-                                                
-                                                st.info(f"✨ **Dữ liệu đã được chuẩn hóa theo Form mẫu ({len(standard_cols)} cột).**")
-                                            except Exception as tpl_e:
-                                                st.warning(f"⚠️ Không thể đọc File mẫu '{m_template_path}': {tpl_e}")
-                                        else:
-                                            st.warning(f"⚠️ Không tìm thấy File mẫu tại: `{m_template_path}`. Dữ liệu hiển thị nguyên bản.")
-                                    # ====================================================
-                                    
-                                    st.success(f"✅ Đã tải thành công {len(m_df)} dòng dữ liệu từ máy {m_name}.")
-                                    st.dataframe(m_df, use_container_width=True)
-                            except Exception as e:
-                                st.error(f"❌ Xảy ra lỗi khi đọc file dữ liệu: {e}")
-    else:
-        # NẾU USER KHÔNG CÓ BẤT CỨ QUYỀN QUẢN LÝ NÀO
-        st.info("👤 Giao diện Nhân viên: Bạn chỉ được cấp quyền tra cứu dữ liệu từ hệ thống.")
-        if df is None:
-            st.warning("⚠️ Quản trị viên chưa cập nhật cơ sở dữ liệu nào lên hệ thống.")
-
-    # ================= KHU VỰC HỎI ĐÁP AI (CHUNG) =================
-    # Điều kiện để nhận biết người dùng đang ở Trang chủ (Tab Cập nhật dữ liệu hoặc giao diện mặc định)
-    is_on_home_page = (not menu_options) or (selected_tab == "📂 Cập nhật Dữ liệu")
-
-    if is_on_home_page:
-        is_line_approved = True
-        if user_role != 'admin' and current_line not in ["Chưa cập nhật", "Tất cả"]:
-            line_data = credentials.get('lines', {}).get(current_line, {})
-            if line_data and line_data.get('status') != 'Đã phê duyệt':
-                is_line_approved = False
-
-        if not is_line_approved:
-            st.error(f"⛔ Truy cập bị từ chối: LINE '{current_line}' của bạn hiện đang ở trạng thái 'Không phê duyệt'. Hệ thống tạm thời khóa chức năng AI đối với LINE này!")
-        else:
-            # Nếu chưa có file dữ liệu, tạo một bảng rỗng để thanh tìm kiếm luôn hiển thị
             if df is None:
                 df = pd.DataFrame(columns=["Chưa có dữ liệu"])
 
-            st.subheader("📊 Cơ sở Dữ liệu, Phân tích & Báo cáo")
-            
-            # --- BỘ LỌC TÌM KIẾM VÀ TÌM KIẾM NÂNG CAO ---
-            with st.expander("🔍 Tìm kiếm & Lọc dữ liệu nâng cao", expanded=True):
-                col_s1, col_s2 = st.columns([7, 3])
+            with st.expander("🎯 Công cụ Tìm kiếm Chuyên sâu", expanded=True):
+                col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+                with col_s1: s_barcode = st.text_input("🏷️ Barcode:")
+                with col_s2: s_lot = st.text_input("📦 Lot Number:")
+                with col_s3: s_model = st.text_input("💻 Model:")
+                with col_s4: s_serial = st.text_input("🔢 Serial:")
                 
-                with col_s1:
-                    search_kw = st.text_input("🔎 Tìm kiếm nhanh (từ khóa chung):", placeholder="Nhập từ khóa cần tìm...")
-                with col_s2:
-                    enable_advanced = st.checkbox("⚙️ Bật Lọc nâng cao")
-                
+                st.markdown("---")
+                col_f1, col_f2 = st.columns([7, 3])
+                with col_f1: search_kw = st.text_input("🔎 Tìm kiếm tự do (Keyword chung):")
+                with col_f2: enable_advanced = st.checkbox("⚙️ Bật Lọc Toán Học (>, <, =)")
+
                 df_filtered = df.copy()
-                
-                # 1. Tìm kiếm nhanh trên toàn bộ các cột
-                if search_kw.strip() and not df_filtered.empty:
-                    mask = df_filtered.astype(str).apply(
-                        lambda row: row.str.contains(search_kw.strip(), case=False, na=False)
-                    ).any(axis=1)
-                    df_filtered = df_filtered[mask]
-                    
-                # 2. Tìm kiếm nâng cao theo cột cụ thể
+
+                def filter_by_kw(dataframe, keyword):
+                    if keyword.strip():
+                        mask = dataframe.astype(str).apply(lambda row: row.str.contains(keyword.strip(), case=False, na=False)).any(axis=1)
+                        return dataframe[mask]
+                    return dataframe
+
+                df_filtered = filter_by_kw(df_filtered, s_barcode)
+                df_filtered = filter_by_kw(df_filtered, s_lot)
+                df_filtered = filter_by_kw(df_filtered, s_model)
+                df_filtered = filter_by_kw(df_filtered, s_serial)
+                df_filtered = filter_by_kw(df_filtered, search_kw)
+
                 if enable_advanced:
-                    st.markdown("---")
-                    st.markdown("##### 🎯 Điều kiện lọc theo cột:")
+                    st.markdown("##### 🎯 Điều kiện lọc toán học theo cột:")
                     cols = list(df.columns)
-                    
-                    col_f1, col_f2, col_f3 = st.columns(3)
-                    with col_f1:
-                        selected_col = st.selectbox("Chọn cột cần lọc:", cols)
-                    with col_f2:
-                        filter_type = st.selectbox("Kiểu lọc:", ["Chứa từ khóa", "Khớp chính xác", "Lớn hơn (>)", "Nhỏ hơn (<)"])
-                    with col_f3:
-                        filter_val = st.text_input("Giá trị lọc:", placeholder="Nhập giá trị...")
+                    ca1, ca2, ca3 = st.columns(3)
+                    with ca1: selected_col = st.selectbox("Chọn cột:", cols)
+                    with ca2: filter_type = st.selectbox("Kiểu lọc:", ["Khớp chính xác", "Lớn hơn (>)", "Nhỏ hơn (<)"])
+                    with ca3: filter_val = st.text_input("Giá trị lọc:")
                     
                     if filter_val.strip() and not df_filtered.empty:
                         val = filter_val.strip()
                         try:
-                            if filter_type == "Chứa từ khóa":
-                                df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.contains(val, case=False, na=False)]
-                            elif filter_type == "Khớp chính xác":
+                            if filter_type == "Khớp chính xác":
                                 df_filtered = df_filtered[df_filtered[selected_col].astype(str).str.lower() == val.lower()]
                             elif filter_type == "Lớn hơn (>)":
                                 df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') > float(val)]
                             elif filter_type == "Nhỏ hơn (<)":
                                 df_filtered = df_filtered[pd.to_numeric(df_filtered[selected_col], errors='coerce') < float(val)]
-                        except Exception as filter_err:
-                            st.warning(f"⚠️ Lỗi định dạng giá trị lọc: {filter_err}")
+                        except Exception:
+                            # BẢO MẬT 2: Ẩn thông báo lỗi chi tiết hệ thống
+                            st.warning("⚠️ Dữ liệu cột này không phải dạng số để so sánh Lớn/Nhỏ.")
 
-            # ================= TẠO TABS CHO DỮ LIỆU, AI VÀ BÁO CÁO =================
-            tab_data, tab_ai, tab_report = st.tabs(["🗄️ Dữ liệu đã lọc", "🤖 Trợ lý AI Phân tích", "📥 Báo cáo & Xuất file"])
+            tab_data, tab_ai, tab_report = st.tabs(["🗄️ Dữ liệu đã lọc", "🤖 Trợ lý AI Phân tích", "📥 Xuất Báo cáo (Excel/PDF)"])
             
             with tab_data:
-                # Hiển thị số lượng kết quả lọc được
                 st.caption(f"📌 **Hiển thị:** {len(df_filtered)} / {len(df)} dòng dữ liệu")
-                # Bảng hiển thị dữ liệu sau khi tìm kiếm/lọc
                 st.dataframe(df_filtered, use_container_width=True, height=400)
 
             with tab_ai:
-                st.markdown("### 🤖 Trợ lý AI")
-                st.info("💡 Trợ lý AI sẽ tập trung phân tích chính xác những dòng dữ liệu bạn đã lọc ở trên.")
-                query = st.text_input("💬 Nhập câu hỏi/yêu cầu AI phân tích dữ liệu:")
-
+                st.info("💡 AI sẽ phân tích dựa trên dữ liệu BẠN VỪA LỌC ở trên.")
+                query = st.text_input("💬 Nhập câu hỏi/yêu cầu cho AI:")
                 if query:
-                    if not openai_api_key:
-                        st.error("⚠️ Vui lòng nhập OpenAI API Key ở thanh bên trái để tiếp tục!")
-                    elif len(df) == 0 or (len(df) == 1 and "Chưa có dữ liệu" in df.columns):
-                        st.warning("⚠️ Hệ thống hiện chưa có dữ liệu để AI phân tích. Quản trị viên cần tải file Excel/CSV lên trước!")
+                    if not openai_api_key: st.error("⚠️ Vui lòng nhập OpenAI API Key!")
+                    elif len(df_filtered) == 0 or (len(df_filtered) == 1 and "Chưa có dữ liệu" in df_filtered.columns):
+                        st.warning("⚠️ Không có dữ liệu để phân tích.")
                     else:
-                        with st.spinner("AI đang xử lý dữ liệu..."):
+                        with st.spinner("AI đang xử lý..."):
                             try:
                                 llm = ChatOpenAI(temperature=0, model="gpt-4o-mini", api_key=openai_api_key)
-                                agent = create_pandas_dataframe_agent(
-                                    llm, 
-                                    df_filtered if search_kw or enable_advanced else df, 
-                                    verbose=True, 
-                                    allow_dangerous_code=True
-                                )
+                                # BẢO MẬT 3: Tắt allow_dangerous_code (Chống RCE)
+                                agent = create_pandas_dataframe_agent(llm, df_filtered, verbose=True, allow_dangerous_code=False)
                                 response = agent.invoke({"input": query})
-                                st.success("✅ Kết quả phân tích từ AI:")
+                                st.success("✅ Kết quả:")
                                 st.write(response["output"])
-                            except Exception as e:
-                                st.error(f"Xảy ra lỗi trong quá trình xử lý: {e}")
+                            except Exception:
+                                # BẢO MẬT 2: Ẩn Data Leakage
+                                st.error("❌ Đã xảy ra lỗi khi phân tích dữ liệu. Vui lòng cấu hình lại câu hỏi hoặc liên hệ Quản trị viên.")
                                 
             with tab_report:
-                st.markdown("### 📥 Xuất Dữ Liệu Báo Cáo")
-                st.info("Hệ thống sẽ xuất bảng dữ liệu đã được lọc (hoặc toàn bộ nếu chưa lọc) ra file CSV chuẩn, bạn có thể mở bằng Excel.")
-                
+                st.markdown("### 📥 Xuất Báo Cáo Chuyên Nghiệp")
                 if df_filtered.empty or (len(df_filtered) == 1 and "Chưa có dữ liệu" in df_filtered.columns):
                     st.warning("⚠️ Không có dữ liệu để xuất báo cáo.")
                 else:
-                    # Chuyển DataFrame thành dạng CSV hỗ trợ tiếng Việt (utf-8-sig)
-                    csv_data = df_filtered.to_csv(index=False).encode('utf-8-sig')
+                    col_export1, col_export2 = st.columns(2)
+                    with col_export1:
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                            df_filtered.to_excel(writer, index=False, sheet_name='Bao_Cao_MES')
+                        excel_data = output.getvalue()
+                        
+                        st.download_button(
+                            label="📥 Tải Báo Cáo (.XLSX)",
+                            data=excel_data,
+                            file_name="Bao_Cao_MES.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="primary"
+                        )
+                    with col_export2:
+                        st.info("📄 **Để xuất PDF:** Mở file Excel vừa tải xuống -> Bấm File -> Print -> Save as PDF.")
+
+        # ---------------------------------------------------------
+        # TAB 3: IN TEM NHÃN ZEBRA
+        # ---------------------------------------------------------
+        elif selected_tab == "🖨️ In Tem Nhãn":
+            st.subheader("🖨️ Trình Điều Khiển Máy In Tem Zebra ZD421")
+            st.info("Hệ thống sẽ tạo ra mã nguồn ZPL chuẩn mực. Bạn có thể tải file `.zpl` về để đẩy vào máy in Zebra.")
+            
+            with st.form("print_label_form"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    p_model = st.text_input("Mã Model (Part No):", value="MDL-10293")
+                    p_lot = st.text_input("Lot Number:", value="LOT-2026-08")
+                with col2:
+                    p_serial = st.text_input("Serial Number:", value="SN0001")
+                    p_barcode = st.text_input("Dữ liệu Barcode:", value="MDL-10293-LOT-2026-08-SN0001")
+                
+                print_qty = st.number_input("Số lượng tem cần in:", min_value=1, max_value=100, value=1)
+                
+                if st.form_submit_button("🔨 Tạo Mã In ZPL", type="primary"):
+                    zpl_code = f"""^XA
+^PW400
+^LL240
+^FO20,20^A0N,25,25^FDModel: {p_model}^FS
+^FO20,55^A0N,25,25^FDLot: {p_lot}^FS
+^FO20,90^A0N,25,25^FDSerial: {p_serial}^FS
+^FO20,130^BCN,60,Y,N,N^FD{p_barcode}^FS
+^PQ{print_qty}
+^XZ"""
+                    st.success("✅ Đã tạo mã ZPL thành công!")
+                    st.code(zpl_code, language="text")
                     
                     st.download_button(
-                        label="📥 Tải xuống Báo Cáo (Excel / CSV)",
-                        data=csv_data,
-                        file_name="Bao_Cao_Du_Lieu.csv",
-                        mime="text/csv",
-                        type="primary"
+                        label="🖨️ Tải File In (.zpl)",
+                        data=zpl_code,
+                        file_name=f"label_{p_serial}.zpl",
+                        mime="text/plain"
                     )
+
+        # ---------------------------------------------------------
+        # TAB 4: DATA TỔNG HỢP TỪ CÁC LINE (HỖ TRỢ .XLSB)
+        # ---------------------------------------------------------
+        elif selected_tab == "📊 DATA Máy Móc":
+            st.subheader("📊 Trích Xuất Dữ Liệu Trực Tiếp Từ Máy / Server")
+            st.info("💡 Hỗ trợ đọc file CSV, Excel, XLSB trực tiếp từ thư mục Mạng (LAN/Server).")
+            
+            lines_data = credentials.get('lines', {})
+            approved_lines_data = {k: v for k, v in lines_data.items() if v.get('status') == 'Đã phê duyệt'}
+            
+            if not approved_lines_data:
+                st.warning("⚠️ Chưa có LINE nào được phê duyệt.")
+            else:
+                if st.button("🔄 Quét lại thư mục dữ liệu", type="primary"): st.rerun()
+                    
+                for lname, linfo in approved_lines_data.items():
+                    machines = linfo.get('machines', {})
+                    active_machines = {k: v for k, v in machines.items() if v.get('active')}
+                    
+                    if active_machines:
+                        st.markdown(f"### 🏭 LINE: {lname}")
+                        for m_num, m_info in active_machines.items():
+                            m_name = m_info.get('name', 'Chưa có tên')
+                            m_path = m_info.get('path', '')
+                            m_format = m_info.get('format', 'CSV')
+                            
+                            with st.expander(f"🖥️ Máy: {m_name} (ID: {m_num}) | 📁 File: {m_format} | 📍 {m_path}"):
+                                if not m_path:
+                                    st.warning("⚠️ Chưa cấu hình đường dẫn file.")
+                                    continue
+                                    
+                                # BẢO MẬT 4: Xác thực thư mục (Chống Path Traversal)
+                                requested_path = os.path.abspath(m_path)
+                                if not requested_path.startswith(ALLOWED_DATA_DIR):
+                                    st.error(f"⛔ BẢO MẬT: File phải nằm trong thư mục được cho phép ({ALLOWED_DATA_DIR})!")
+                                    continue
+                                
+                                if not os.path.exists(requested_path):
+                                    st.error(f"❌ Không tìm thấy file. (Kiểm tra lại kết nối mạng LAN/Server)")
+                                    continue
+                                    
+                                try:
+                                    m_df = None
+                                    if m_format == "CSV": m_df = pd.read_csv(requested_path)
+                                    elif m_format == "Excel": m_df = pd.read_excel(requested_path)
+                                    elif m_format == "XLSB": m_df = pd.read_excel(requested_path, engine='pyxlsb')
+                                    elif m_format == "JSON": m_df = pd.read_json(requested_path)
+                                    elif m_format == "TXT": m_df = pd.read_csv(requested_path, sep=None, engine='python')
+                                    else: st.warning(f"⚠️ Định dạng '{m_format}' chưa được hỗ trợ.")
+                                        
+                                    if m_df is not None:
+                                        st.success(f"✅ Tải thành công {len(m_df)} dòng dữ liệu.")
+                                        st.dataframe(m_df.head(100), use_container_width=True)
+                                except Exception:
+                                    # BẢO MẬT 2: Ẩn báo lỗi chi tiết
+                                    st.error("❌ Lỗi cấu trúc file hoặc định dạng không tương thích. Vui lòng kiểm tra lại file gốc.")
+                        st.markdown("---")
+
+        # ---------------------------------------------------------
+        # CÁC TAB QUẢN LÝ (DATA, ACCOUNT, LINE)
+        # ---------------------------------------------------------
+        elif selected_tab == "📂 Cập nhật Dữ liệu":
+            uploaded_file = st.file_uploader("📂 Chọn file dữ liệu (Excel/CSV/XLSB) để cập nhật Data gốc", type=["xlsx", "xls", "xlsb", "csv"])
+            if uploaded_file is not None:
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                elif uploaded_file.name.endswith('.xlsb'):
+                    df = pd.read_excel(uploaded_file, engine='pyxlsb')
+                else:
+                    df = pd.read_excel(uploaded_file)
+                df.to_csv("data_server.csv", index=False)
+                st.success("✅ Đã cập nhật cơ sở dữ liệu chung!")
+
+        elif selected_tab == "👥 Quản lý Tài khoản":
+            st.subheader("📋 Quản lý & Phân quyền người dùng")
+            user_list = []
+            for uname, info in credentials['usernames'].items():
+                perms = info.get('permissions', {})
+                perm_str = []
+                if perms.get('view', True): perm_str.append("👁️ Tra cứu")
+                if perms.get('edit_data') or info.get('role') == 'admin': perm_str.append("📂 Cập nhật Data")
+                if perms.get('edit_line') or info.get('role') == 'admin': perm_str.append("🏭 Quản lý Line")
+                if perms.get('edit_account') or info.get('role') == 'admin': perm_str.append("👑 Admin")
+                
+                user_list.append({
+                    "Tài khoản": uname, 
+                    "Tên": info.get('name', ''), 
+                    "Chức vụ": info.get('position', ''),
+                    "Phân quyền": " | ".join(perm_str)
+                })
+            st.table(pd.DataFrame(user_list))
+
+            with st.expander("➕ Cấp tài khoản mới"):
+                with st.form("new_user_form", clear_on_submit=True):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        new_user = st.text_input("Tên đăng nhập*:")
+                        new_name = st.text_input("Tên hiển thị*:")
+                        new_position = st.text_input("Chức vụ:") 
+                    with c2:
+                        new_dept = st.text_input("Phòng ban:")
+                        new_line = st.selectbox("LINE:", line_options)
+                        new_pass = st.text_input("Mật khẩu*:", type="password")
+                    
+                    p1, p2 = st.columns(2)
+                    with p1:
+                        new_perm_view = st.checkbox("👁️ Tra cứu & Xem Dashboard", value=True)
+                        new_perm_data = st.checkbox("📂 Cập nhật file dữ liệu tổng", value=False)
+                    with p2:
+                        new_perm_line = st.checkbox("🏭 Quản lý LINE & Máy móc", value=False)
+                        new_perm_acc = st.checkbox("👥 Quản trị viên (Toàn quyền)", value=False)
+                    
+                    if st.form_submit_button("Tạo tài khoản"):
+                        if new_user == "" or new_pass == "" or new_name == "": st.error("⚠️ Điền đủ thông tin bắt buộc (*)")
+                        elif new_user in credentials['usernames']: st.error("⚠️ Tài khoản đã tồn tại!")
+                        else:
+                            temp_cred = {'usernames': {new_user: {'password': new_pass}}}
+                            stauth.Hasher.hash_passwords(temp_cred)
+                            credentials['usernames'][new_user] = {
+                                'name': new_name, 'password': temp_cred['usernames'][new_user]['password'], 
+                                'role': 'admin' if new_perm_acc else 'user',
+                                'position': new_position, 'department': new_dept, 'line': new_line,
+                                'permissions': {'view': new_perm_view, 'edit_data': new_perm_data, 'edit_line': new_perm_line, 'edit_account': new_perm_acc}
+                            }
+                            save_users(credentials); st.success("✅ Đã tạo!"); time.sleep(1); st.rerun()
+
+        elif selected_tab == "🏭 Quản lý LINE":
+            st.subheader("🏭 Thiết lập Nhà máy & Thiết bị")
+            
+            with st.expander("➕ Tạo LINE mới"):
+                with st.form("new_line_form", clear_on_submit=True):
+                    new_lname = st.text_input("Tên LINE*:")
+                    if st.form_submit_button("Tạo LINE"):
+                        if new_lname.strip() != "":
+                            credentials['lines'][new_lname] = {'status': 'Đã phê duyệt', 'machines': {}}
+                            save_users(credentials); st.success("✅ Tạo LINE thành công!"); time.sleep(1); st.rerun()
+
+            st.markdown("---")
+            lines_data = credentials.get('lines', {})
+            for lname, linfo in lines_data.items():
+                with st.expander(f"🏭 LINE: {lname} | Máy: {len(linfo.get('machines', {}))}"):
+                    line_machines = linfo.get('machines', {})
+                    mac_list = [{"ID": m, "Tên": i.get('name'), "Format": i.get('format'), "Path": i.get('path')} for m, i in line_machines.items()]
+                    df_mac = pd.DataFrame(mac_list)
+                    if not df_mac.empty: st.dataframe(df_mac, hide_index=True, use_container_width=True)
+                    
+                    with st.form(f"add_mac_{lname}"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            m_num = st.text_input("Mã Máy*:")
+                            m_name = st.text_input("Tên Máy*:")
+                        with c2:
+                            m_format = st.selectbox("Định dạng file:", ["CSV", "Excel", "XLSB", "TXT", "JSON"]) 
+                            m_path = st.text_input(f"Đường dẫn (Bắt buộc phải nằm trong {ALLOWED_DATA_DIR}):", value=f"{ALLOWED_DATA_DIR}/...")
+                            
+                        if st.form_submit_button("Thêm Máy"):
+                            if m_num and m_name:
+                                if 'machines' not in credentials['lines'][lname]: credentials['lines'][lname]['machines'] = {}
+                                credentials['lines'][lname]['machines'][m_num] = {'name': m_name, 'format': m_format, 'path': m_path, 'active': True}
+                                save_users(credentials); st.success("✅ Đã thêm!"); time.sleep(1); st.rerun()
