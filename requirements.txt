@@ -1,6 +1,6 @@
 streamlit==1.32.0
-pandas
+pandas==2.2.1
 streamlit-authenticator==0.3.2
-xlsxwriter
-openpyxl
-pyxlsb
+xlsxwriter==3.2.0
+openpyxl==3.1.2
+pyxlsb==1.0.10
