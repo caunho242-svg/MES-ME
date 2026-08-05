@@ -79,9 +79,6 @@ elif authentication_status:
     if COOKIE_KEY == "fallback_unsafe_key_change_me_in_production":
         st.error("🚨 BÁO ĐỘNG BẢO MẬT: Hệ thống đang dùng khóa Cookie mặc định. Dữ liệu phiên đăng nhập có thể bị đánh cắp!")
     
-    if username == 'admin' and stauth.Hasher.check_password('admin123', credentials['usernames']['admin']['password']):
-        st.error("🚨 BÁO ĐỘNG BẢO MẬT: Mật khẩu của Quản trị viên đang là mặc định (admin123). HÃY VÀO 'QUẢN LÝ TÀI KHOẢN' VÀ ĐỔI MẬT KHẨU NGAY LẬP TỨC!")
-
     # -------------------------------------------------------------------
     # 3. GIAO DIỆN CHÍNH (SAU KHI ĐĂNG NHẬP)
     # -------------------------------------------------------------------
